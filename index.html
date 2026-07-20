@@ -353,20 +353,36 @@
 <div class="wrap">
 
   <header class="hero">
-    <div class="eyebrow">✈ Boarding Pass for Shared Bills</div>
-    <h1 class="title">Trip Ledger</h1>
-    <p class="subtitle">Add your crew, log every rupee spent, and let the ledger figure out exactly who owes whom.</p>
+    <div class="eyebrow">✈︎ • TRAVEL • SPEND • SPLIT • REPEAT • ✈︎</div>
+    <h1 class="title">💸 SplitEasy ₹</h1>
+    <p class="subtitle">From road trips to weekend getaways, SplitEasy keeps every shared expense organized.</p>
   </header>
 
-  <!-- STEP 1: PASTE BULK -->
+  <!-- STEP 1: FRIENDS -->
   <section class="ticket notch">
     <div class="ticket-inner">
       <div class="step-head">
         <span class="step-num">STEP 01</span>
+        <span class="step-title">Who's on this trip?</span>
+      </div>
+      <div class="step-desc">Add at least one name</div>
+      <div class="add-inline">
+        <input type="text" id="friendInput" placeholder="Type a name, e.g. Subho" onkeydown="if(event.key==='Enter'){addFriend();}">
+        <button class="btn-primary" onclick="addFriend()">Add friend</button>
+      </div>
+      <div class="chip-list" id="friendChips"></div>
+    </div>
+  </section>
+
+  <!-- STEP 2: PASTE BULK -->
+  <section class="ticket notch">
+    <div class="ticket-inner">
+      <div class="step-head">
+        <span class="step-num">STEP 02</span>
         <span class="step-title">Paste a batch of expenses</span>
       </div>
       <div class="step-desc">One expense per line, format: <code class="k">purpose, amount, paid by</code></div>
-      <textarea id="pasteArea" placeholder="tickets, 3400, alex&#10;food, 2000, finix&#10;shopping, 0, ayan&#10;shopping, 7035, jhon"></textarea>
+      <textarea id="pasteArea" placeholder="tickets, 2870, Subho&#10;food, 2100, Suman&#10;shopping, 6999, pabitra"></textarea>
       <div class="hint">Pasted rows include everyone added in Step 1 by default. Use <strong>Edit</strong> on the row afterward if someone should be excluded (like Ayan skipping the food bill).</div>
       <div style="margin-top:14px;">
         <button class="btn-sage" onclick="parsePaste()">Add pasted expenses</button>
@@ -374,20 +390,7 @@
     </div>
   </section>
 
-  <!-- STEP 2: FRIENDS -->
-  <section class="ticket notch">
-    <div class="ticket-inner">
-      <div class="step-head">
-        <span class="step-num">STEP 02</span>
-        <span class="step-title">Who's on this trip?</span>
-      </div>
-      <div class="add-inline">
-        <input type="text" id="friendInput" placeholder="Type a name, e.g. Alex" onkeydown="if(event.key==='Enter'){addFriend();}">
-        <button class="btn-primary" onclick="addFriend()">Add friend</button>
-      </div>
-      <div class="chip-list" id="friendChips"></div>
-    </div>
-  </section>
+
 
   <!-- STEP 3: MANUAL ENTRY -->
   <section class="ticket notch">
@@ -396,6 +399,7 @@
         <span class="step-num">STEP 03</span>
         <span class="step-title">Log an expense</span>
       </div>
+      <div class="step-desc">add or edit more expenses</div>
       <div class="row-flex">
         <div>
           <label class="field-label">Purpose</label>
