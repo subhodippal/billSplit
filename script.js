@@ -32,30 +32,63 @@ function save(key, value){
   catch(_){ toast('Could not save — storage is full or blocked'); }
 }
 
-let user = load(USER_KEY, null);          // {name, email}
-let splits = load(SPLITS_KEY, {});        // {id: split}
+// Cloud mode (Supabase configured): accounts + shared, live splits.
+// Otherwise: offline mode, everything lives in this browser.
+const CLOUD = !!(window.Cloud && Cloud.enabled);
 
-function persistSplits(){ save(SPLITS_KEY, splits); }
+let user = CLOUD ? null : load(USER_KEY, null);    // {name, email, id?}
+let splits = CLOUD ? {} : load(SPLITS_KEY, {});   // {id: split}
+let cloudLoading = CLOUD;
+
+function persistSplits(){ if(!CLOUD) save(SPLITS_KEY, splits); }
+function newId(prefix){ return CLOUD ? crypto.randomUUID() : uid(prefix); }
+
+// Save a change: in offline mode write to this device; in cloud mode run the
+// Supabase call, and if it fails re-pull the split so the screen matches the server.
+async function push(op, splitId){
+  if(!CLOUD){ persistSplits(); return true; }
+  try{ await op(); return true; }
+  catch(err){
+    toast(err.message || 'Could not save — check your connection');
+    if(splitId) await refreshSplit(splitId);
+    return false;
+  }
+}
+
+async function refreshSplit(id){
+  try{
+    const fresh = await Cloud.loadSplit(id);
+    if(fresh) splits[id] = fresh; else delete splits[id];
+  } catch(_){ /* offline — keep what we have */ }
+  rerender(id);
+}
 function getSplit(id){ return splits[id] || null; }
 function liveEntries(split){ return split.entries.filter(e => !e.deleted); }
 function touch(obj){ obj.updatedAt = Date.now(); if(user) obj.updatedBy = user.name; }
 
 /* ---------------- AUTH ---------------- */
 let afterLogin = null;
+let loginMode = 'signin';   // cloud: 'signin' | 'signup'
 
 function renderAuth(){
   const area = $('authArea');
   if(user){
     area.innerHTML = `
       <div class="user-pill">
-        <span class="user-avatar">${escapeHtml(initials(user.name))}</span>
+        <button class="user-avatar" id="avatarBtn" title="Change your name">${escapeHtml(initials(user.name))}</button>
         <span class="user-name">${escapeHtml(user.name)}</span>
         <button class="btn-ghost-light btn-small" id="logoutBtn">Log out</button>
       </div>`;
-    $('logoutBtn').onclick = () => {
-      if(!confirm('Log out? Your splits stay saved on this device.')) return;
+    $('avatarBtn').onclick = changeMyName;
+    $('logoutBtn').onclick = async () => {
+      if(!confirm(CLOUD ? 'Log out of SplitEasy on this device?' : 'Log out? Your splits stay saved on this device.')) return;
+      if(CLOUD){
+        try{ await Cloud.signOut(); } catch(err){ toast(err.message); }
+        splits = {};
+      } else {
+        localStorage.removeItem(USER_KEY);
+      }
       user = null;
-      localStorage.removeItem(USER_KEY);
       renderAuth();
       route();
     };
@@ -65,13 +98,58 @@ function renderAuth(){
   }
 }
 
+async function changeMyName(){
+  const input = prompt('Your name (shown on entries you add):', user.name);
+  const name = cleanName(input || '');
+  if(!name || name === user.name) return;
+  if(CLOUD){
+    try{ await Cloud.updateName(name); } catch(err){ toast(err.message); return; }
+  } else {
+    save(USER_KEY, { ...user, name });
+  }
+  user = { ...user, name };
+  renderAuth();
+  toast('Name updated — rename yourself in a split’s People list if needed');
+}
+
+function setLoginMode(mode){
+  loginMode = mode;
+  document.querySelectorAll('#loginTabs button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const signup = mode === 'signup';
+  $('loginTitle').textContent = CLOUD ? (signup ? 'Create account' : 'Sign in') : 'Log in';
+  $('loginNameWrap').hidden = CLOUD && !signup;
+  $('loginName').required = !CLOUD || signup;
+  $('loginPassword').autocomplete = signup ? 'new-password' : 'current-password';
+  $('loginSubmit').textContent = CLOUD ? (signup ? 'Create account' : 'Sign in') : 'Continue';
+  showLoginMsg('');
+}
+
+function showLoginMsg(msg, isError){
+  $('loginMsg').hidden = !msg;
+  $('loginMsg').textContent = msg;
+  $('loginMsg').classList.toggle('error', !!isError);
+}
+
 function openLogin(then){
   afterLogin = then || null;
+  if(CLOUD){
+    $('loginTabs').hidden = false;
+    $('loginPasswordWrap').hidden = false;
+    $('loginPassword').required = true;
+    $('loginEmail').required = true;
+    $('loginEmailLabel').textContent = 'Email';
+    $('loginIntro').textContent = 'Sign in to keep your splits in the cloud and share them with your group.';
+  }
   $('loginName').value = user ? user.name : '';
   $('loginEmail').value = user ? (user.email || '') : '';
+  setLoginMode(loginMode);
   openSheet('loginSheet');
-  setTimeout(() => $('loginName').focus(), 50);
+  setTimeout(() => (CLOUD ? $('loginEmail') : $('loginName')).focus(), 50);
 }
+$('loginTabs').addEventListener('click', e => {
+  const b = e.target.closest('[data-mode]');
+  if(b) setLoginMode(b.dataset.mode);
+});
 
 function requireLogin(then){
   if(user){ then(); return; }
@@ -79,18 +157,66 @@ function requireLogin(then){
   openLogin(then);
 }
 
-$('loginForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const name = cleanName($('loginName').value);
-  if(!name) return;
-  user = { name, email: $('loginEmail').value.trim() };
-  save(USER_KEY, user);
+function finishLogin(){
   closeSheet('loginSheet');
   renderAuth();
-  toast(`Welcome, ${name}!`);
+  toast(`Welcome, ${user.name}!`);
   const next = afterLogin; afterLogin = null;
   if(next) next(); else route();
+}
+
+$('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if(!CLOUD){
+    const name = cleanName($('loginName').value);
+    if(!name) return;
+    user = { name, email: $('loginEmail').value.trim() };
+    save(USER_KEY, user);
+    finishLogin();
+    return;
+  }
+  const email = $('loginEmail').value.trim();
+  const password = $('loginPassword').value;
+  const btn = $('loginSubmit');
+  btn.disabled = true;
+  showLoginMsg('');
+  rememberReturn();
+  try{
+    if(loginMode === 'signup'){
+      const name = cleanName($('loginName').value);
+      const res = await Cloud.signUp(name, email, password);
+      if(!res.session){
+        showLoginMsg(`Almost done — we sent a confirmation link to ${email}. Open it on this device to finish signing up.`);
+        return;
+      }
+    } else {
+      await Cloud.signIn(email, password);
+    }
+    // onAuthStateChange picks up the session and calls onSignedIn()
+  } catch(err){
+    showLoginMsg(err.message, true);
+  } finally {
+    btn.disabled = false;
+  }
 });
+
+// Email links land on the site root; remember where to go back to afterwards.
+const RETURN_KEY = 'se_return';
+function rememberReturn(){ try{ localStorage.setItem(RETURN_KEY, location.hash || '#/'); } catch(_){} }
+function takeReturn(){
+  try{ const h = localStorage.getItem(RETURN_KEY); localStorage.removeItem(RETURN_KEY); return h; }
+  catch(_){ return null; }
+}
+
+$('magicLinkBtn').onclick = async () => {
+  const email = $('loginEmail').value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showLoginMsg('Enter your email first.', true); $('loginEmail').focus(); return; }
+  rememberReturn();
+  try{
+    await Cloud.magicLink(email, loginMode === 'signup' ? cleanName($('loginName').value) : '');
+    showLoginMsg(`Check ${email} — tap the link in that email to sign in.`);
+  } catch(err){ showLoginMsg(err.message, true); }
+};
 
 /* ---------------- SHEETS / TOAST ---------------- */
 function openSheet(id){ $(id).hidden = false; document.body.classList.add('no-scroll'); }
@@ -118,9 +244,12 @@ function toast(msg){
 }
 
 /* ---------------- ROUTER ---------------- */
-function showView(name){
+let currentView = 'home';
+function showView(name, keepScroll){
+  const changed = currentView !== name;
+  currentView = name;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-  window.scrollTo(0, 0);
+  if(!keepScroll || changed) window.scrollTo(0, 0);
 }
 
 function route(){
@@ -129,6 +258,8 @@ function route(){
   const arg = rest.join('/');
   document.querySelectorAll('.sheet-backdrop:not([hidden])').forEach(s => closeSheet(s.id));
 
+  if(page === 'join' && arg) return renderJoin(arg);
+  if(CLOUD && cloudLoading && ['split', 'edit'].includes(page)) return renderLoading();
   if(page === 'splits') return renderSplitList();
   if(page === 'new') return renderSplitForm(null);
   if(page === 'edit' && getSplit(arg)) return renderSplitForm(arg);
@@ -139,6 +270,11 @@ function route(){
 }
 window.addEventListener('hashchange', route);
 
+function renderLoading(){
+  $('splitList').innerHTML = '<div class="loading-note">Loading your splits…</div>';
+  showView('splits');
+}
+
 /* ---------------- HOME ---------------- */
 function renderHome(){
   const count = Object.keys(splits).length;
@@ -148,7 +284,16 @@ function renderHome(){
 }
 
 /* ---------------- SPLIT LIST ---------------- */
-function renderSplitList(){
+function renderSplitList(keepScroll){
+  renderUploadBanner();
+  if(CLOUD && !user){
+    $('splitList').innerHTML = `<div class="list-empty">
+      <p>Log in to see your splits and the ones shared with you.</p>
+      <button class="btn-primary" onclick="openLogin()">Log in</button></div>`;
+    showView('splits');
+    return;
+  }
+  if(cloudLoading){ renderLoading(); return; }
   const list = Object.values(splits).sort((a, b) => b.updatedAt - a.updatedAt);
   const box = $('splitList');
   if(list.length === 0){
@@ -163,7 +308,7 @@ function renderSplitList(){
       return `<a class="split-card" href="#/split/${encodeURIComponent(s.id)}">
         <div class="split-card-top">
           <span class="tag">${escapeHtml(s.type)}</span>
-          <span class="hint" style="margin:0;">${formatDay(s.createdAt)}</span>
+          <span class="hint" style="margin:0;">${s.collaborators > 1 ? `👥 shared · ` : ''}${formatDay(s.createdAt)}</span>
         </div>
         <div class="split-card-name">${escapeHtml(s.name)}</div>
         ${s.location ? `<div class="split-card-loc">📍 ${escapeHtml(s.location)}</div>` : ''}
@@ -174,7 +319,7 @@ function renderSplitList(){
       </a>`;
     }).join('');
   }
-  showView('splits');
+  showView('splits', keepScroll);
 }
 
 /* ---------------- CREATE / EDIT SPLIT ---------------- */
@@ -230,7 +375,7 @@ $('memberChips').addEventListener('click', e => {
 });
 $('splitGeoBtn').onclick = () => captureGeo($('splitGeoBtn'), $('splitLocation'), 'splitGeoInfo', g => { draftGeo = g; });
 
-$('splitForm').addEventListener('submit', (e) => {
+$('splitForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   if(!editingSplitId && !user){ openLogin(() => $('splitForm').requestSubmit()); return; }
   const name = $('splitName').value.trim();
@@ -245,7 +390,7 @@ $('splitForm').addEventListener('submit', (e) => {
       location: $('splitLocation').value.trim(), geo: draftGeo
     });
     touch(s);
-    persistSplits();
+    await push(() => Cloud.saveSplitMeta(s), s.id);
     toast('Details saved');
     location.hash = `#/split/${encodeURIComponent(s.id)}`;
     return;
@@ -253,7 +398,7 @@ $('splitForm').addEventListener('submit', (e) => {
 
   const now = Date.now();
   const s = {
-    id: uid('s'),
+    id: newId('s'),
     name,
     type: $('splitType').value,
     currency: $('splitCurrency').value,
@@ -267,8 +412,16 @@ $('splitForm').addEventListener('submit', (e) => {
     updatedAt: now,
     updatedBy: user.name
   };
-  splits[s.id] = s;
-  persistSplits();
+  if(CLOUD){
+    const btn = $('splitSubmitBtn');
+    btn.disabled = true;
+    try{ splits[s.id] = await Cloud.createSplit(s); }
+    catch(err){ toast(err.message); return; }
+    finally{ btn.disabled = false; }
+  } else {
+    splits[s.id] = s;
+    persistSplits();
+  }
   $('memberInput').value = '';
   toast('Split created');
   location.hash = `#/split/${encodeURIComponent(s.id)}`;
@@ -278,7 +431,7 @@ $('splitForm').addEventListener('submit', (e) => {
 let currentSplitId = null;
 function cur(){ return getSplit(currentSplitId); }
 
-function renderSplitDetail(id){
+function renderSplitDetail(id, keepScroll){
   currentSplitId = id;
   const s = cur();
   $('detailType').textContent = `${s.type} split`;
@@ -292,12 +445,15 @@ function renderSplitDetail(id){
     meta.push(`<a href="${mapUrl(s.geo)}" target="_blank" rel="noopener">📍 ${s.geo.lat.toFixed(4)}, ${s.geo.lng.toFixed(4)}</a>`);
   }
   meta.push(`<span>👥 ${s.members.length} people</span>`);
+  if(CLOUD && s.collaborators > 1) meta.push(`<span>🔗 Shared with ${s.collaborators - 1} other${s.collaborators > 2 ? 's' : ''}</span>`);
   meta.push(`<span>Created by ${escapeHtml(s.createdBy || '—')} · ${formatDay(s.createdAt)}</span>`);
+  $('liveDot').hidden = !(CLOUD && liveStatus === 'SUBSCRIBED');
+  $('deleteSplitBtn').textContent = CLOUD && s.role !== 'owner' ? 'Leave split' : 'Delete split';
   $('detailMeta').innerHTML = meta.join('');
   renderMembers();
   renderEntries();
   renderSettlement();
-  showView('split');
+  showView('split', keepScroll);
 }
 
 /* --- members --- */
@@ -322,12 +478,25 @@ function addMember(split, rawName){
   return name;
 }
 
-function addDetailMember(){
+// Add any names not yet in the split (locally right away, then on the server).
+async function ensurePeople(s, names){
+  const fresh = names.map(cleanName).filter(n => n && !hasName(s.members, n));
+  dedupe(fresh).forEach(n => addMember(s, n));
+  if(!CLOUD){ if(fresh.length) persistSplits(); return true; }
+  for(const n of dedupe(fresh)){
+    if(!await push(() => Cloud.addPerson(s, n), s.id)) return false;
+  }
+  return true;
+}
+
+async function addDetailMember(){
   const s = cur();
-  const added = addMember(s, $('detailMemberInput').value);
-  if(!added) return;
+  const name = cleanName($('detailMemberInput').value);
+  if(!name) return;
+  if(hasName(s.members, name)){ toast(`${name} is already in the group`); return; }
   $('detailMemberInput').value = '';
-  persistSplits();
+  const added = name;
+  if(!await ensurePeople(s, [name])) return;
   renderSplitDetail(s.id);
   toast(`${added} added — included in new entries from now on`);
 }
@@ -342,7 +511,7 @@ $('detailMembers').addEventListener('click', (e) => {
   if(rem) removeMember(s, rem.dataset.remove);
 });
 
-function renameMember(s, oldName){
+async function renameMember(s, oldName){
   const input = prompt(`Rename "${oldName}" to:`, oldName);
   if(input === null) return;
   const newName = cleanName(input);
@@ -359,12 +528,11 @@ function renameMember(s, oldName){
     if(changed) touch(en);
   });
   touch(s);
-  persistSplits();
-  renderSplitDetail(s.id);
-  toast(`Renamed to ${target} everywhere`);
+  renderSplitDetail(s.id, true);
+  if(await push(() => Cloud.renamePerson(s, oldName, target), s.id)) toast(`Renamed to ${target} everywhere`);
 }
 
-function removeMember(s, name){
+async function removeMember(s, name){
   const entries = liveEntries(s);
   const paid = entries.filter(e => e.paidBy === name).length;
   if(paid){
@@ -381,8 +549,8 @@ function removeMember(s, name){
     if(en.splitAmong.includes(name)){ en.splitAmong = en.splitAmong.filter(n => n !== name); touch(en); }
   });
   touch(s);
-  persistSplits();
-  renderSplitDetail(s.id);
+  renderSplitDetail(s.id, true);
+  await push(() => Cloud.removePerson(s, name), s.id);
 }
 
 /* --- entries table --- */
@@ -441,16 +609,19 @@ $('entryBody').addEventListener('click', (e) => {
   if(row) requireLogin(() => openEntrySheet(row.dataset.id));
 });
 
-function deleteEntry(id){
+async function deleteEntry(id){
   const s = cur();
   const en = s.entries.find(x => x.id === id);
   if(!en || !confirm(`Delete "${en.purpose}"?`)) return;
-  en.deleted = true;            // tombstone so the deletion syncs via share links
-  touch(en); touch(s);
-  persistSplits();
+  if(CLOUD){
+    s.entries = s.entries.filter(x => x.id !== id);
+  } else {
+    en.deleted = true;            // tombstone so the deletion syncs via share links
+    touch(en); touch(s);
+  }
   closeSheet('entrySheet');
-  renderSplitDetail(s.id);
-  toast('Entry deleted');
+  renderSplitDetail(s.id, true);
+  if(await push(() => Cloud.deleteEntry(en), s.id)) toast('Entry deleted');
 }
 
 /* ---------------- ENTRY SHEET ---------------- */
@@ -528,14 +699,14 @@ function fillSelect(sel, values, selected, newLabel, labelFn){
   sel.dataset.prev = sel.value;
 }
 
-$('ePaidBy').addEventListener('change', function(){
+$('ePaidBy').addEventListener('change', async function(){
   if(this.value !== NEW_OPTION){ this.dataset.prev = this.value; return; }
   const name = cleanName(prompt('Name of the person who paid:') || '');
   if(!name){ this.value = this.dataset.prev; return; }
   const s = cur();
-  const added = addMember(s, name);
-  persistSplits();
+  const added = s.members.find(m => m.toLowerCase() === name.toLowerCase()) || name;
   const checked = getCheckedSplit();
+  if(!await ensurePeople(s, [added])) return;
   fillPaidBy(added);
   renderSplitPills(dedupe(checked.concat(added)));
   renderMembers();
@@ -548,8 +719,8 @@ $('ePayVia').addEventListener('change', function(){
   if(!mode){ this.value = this.dataset.prev; return; }
   const s = cur();
   const existing = s.payModes.find(m => m.toLowerCase() === mode.toLowerCase());
-  if(!existing){ s.payModes.push(mode); touch(s); persistSplits(); }
   fillPayVia(existing || mode);
+  if(!existing){ s.payModes.push(mode); touch(s); push(() => Cloud.saveSplitMeta(s), s.id); }
 });
 
 function renderSplitPills(selected){
@@ -587,7 +758,7 @@ $('eSplitNone').onclick = () => setAllPills(false);
 $('eGeoBtn').onclick = () => captureGeo($('eGeoBtn'), $('eLocation'), 'eGeoInfo', g => { entryGeo = g; });
 $('eDeleteBtn').onclick = () => deleteEntry(editingEntryId);
 
-$('entryForm').addEventListener('submit', (e) => {
+$('entryForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const s = cur();
   const amount = parseFloat($('eAmount').value);
@@ -602,8 +773,17 @@ $('entryForm').addEventListener('submit', (e) => {
   if(splitAmong.length === 0){ toast('Pick at least one person to share this with'); return; }
 
   // Anyone involved becomes a group member
-  [paidBy, ...splitAmong].forEach(n => addMember(s, n));
+  const btn = $('eSubmitBtn');
+  btn.disabled = true;
+  try{
+    if(!await ensurePeople(s, [paidBy, ...splitAmong])) return;
+    await saveEntryFromForm(s, { paidBy, payVia, purpose, amount, splitAmong });
+  } finally {
+    btn.disabled = false;
+  }
+});
 
+async function saveEntryFromForm(s, { paidBy, payVia, purpose, amount, splitAmong }){
   const data = {
     datetime: $('eDate').value || nowLocal(),
     amount: round2(amount),
@@ -615,21 +795,21 @@ $('entryForm').addEventListener('submit', (e) => {
     splitAmong
   };
 
-  if(editingEntryId){
-    const en = s.entries.find(x => x.id === editingEntryId);
+  let en = editingEntryId && s.entries.find(x => x.id === editingEntryId);
+  if(en){
     Object.assign(en, data);
     touch(en);
-    toast('Entry updated');
   } else {
     const now = Date.now();
-    s.entries.push({ id: uid('e'), ...data, addedBy: user.name, createdAt: now, updatedAt: now, updatedBy: user.name });
-    toast('Entry added');
+    en = { id: newId('e'), ...data, addedBy: user.name, createdAt: now, updatedAt: now, updatedBy: user.name };
+    s.entries.push(en);
   }
   touch(s);
-  persistSplits();
+  const isEdit = !!editingEntryId;
   closeSheet('entrySheet');
-  renderSplitDetail(s.id);
-});
+  renderSplitDetail(s.id, true);
+  if(await push(() => Cloud.saveEntry(s, en), s.id)) toast(isEdit ? 'Entry updated' : 'Entry added');
+}
 
 function lastEntry(s){ return sortedEntries(s).slice(-1)[0]; }
 function lastPayVia(s){ const l = lastEntry(s); return l && l.payVia; }
@@ -727,12 +907,22 @@ $('snapshotBtn').onclick = function(){
 
 $('editDetailsBtn').onclick = () => { location.hash = `#/edit/${encodeURIComponent(currentSplitId)}`; };
 
-$('deleteSplitBtn').onclick = () => {
+$('deleteSplitBtn').onclick = async () => {
   const s = cur();
-  if(!confirm(`Delete "${s.name}" and all its entries from this device? This can't be undone.`)) return;
+  const leaving = CLOUD && s.role !== 'owner';
+  const msg = leaving
+    ? `Leave "${s.name}"? You'll lose access until someone shares it with you again.`
+    : CLOUD
+      ? `Delete "${s.name}" and all its entries for everyone it's shared with? This can't be undone.`
+      : `Delete "${s.name}" and all its entries from this device? This can't be undone.`;
+  if(!confirm(msg)) return;
+  if(CLOUD){
+    try{ await (leaving ? Cloud.leaveSplit(s) : Cloud.deleteSplit(s)); }
+    catch(err){ toast(err.message); return; }
+  }
   delete splits[s.id];
   persistSplits();
-  toast('Split deleted');
+  toast(leaving ? 'You left the split' : 'Split deleted');
   location.hash = '#/splits';
 };
 
@@ -741,6 +931,7 @@ $('deleteSplitBtn').onclick = () => {
 // copy; when they share back, entries are merged by id (newest edit wins).
 $('shareBtn').onclick = async () => {
   const s = cur();
+  if(CLOUD){ openShareSheet(s); return; }
   const url = `${location.origin}${location.pathname}#/import/${await encodeSplit(s)}`;
   const text = `Join "${s.name}" on SplitEasy — add your expenses and share the link back so I can merge them:`;
   if(navigator.share){
@@ -767,7 +958,7 @@ async function renderImport(payload){
       <a href="#/" class="btn-primary btn-link" style="padding:11px 20px;">Go home</a>`;
     return;
   }
-  const existing = getSplit(incoming.id);
+  const existing = CLOUD ? null : getSplit(incoming.id);
   const n = incoming.entries.filter(e => !e.deleted).length;
   box.innerHTML = `
     <div class="split-hero-type" style="color:var(--sage)">Shared ${escapeHtml(incoming.type || '')} split</div>
@@ -783,6 +974,19 @@ async function renderImport(payload){
       <button class="btn-primary" id="importBtn">${existing ? 'Merge updates' : 'Save to my splits'}</button>
       <a href="#/" class="btn-ghost btn-link" style="padding:11px 20px;">Cancel</a>
     </div>`;
+  if(CLOUD){
+    $('importBtn').textContent = 'Save to my account';
+    $('importBtn').onclick = () => requireLogin(async () => {
+      try{
+        const saved = await Cloud.uploadSplit(incoming);
+        splits[saved.id] = saved;
+        toast('Split saved to your account');
+        history.replaceState(null, '', `#/split/${encodeURIComponent(saved.id)}`);
+        route();
+      } catch(err){ toast(err.message); }
+    });
+    return;
+  }
   $('importBtn').onclick = () => {
     const merged = existing ? mergeSplits(existing, incoming) : incoming;
     splits[merged.id] = merged;
@@ -914,6 +1118,241 @@ function formatDateTime(local){
 function formatDay(ts){ return ts ? new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''; }
 function formatStamp(ts){ return ts ? new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : ''; }
 
+/* ---------------- CLOUD: SHARE SHEET ---------------- */
+function joinUrl(s){ return `${location.origin}${location.pathname}#/join/${s.shareCode}`; }
+
+async function openShareSheet(s){
+  $('shareLink').value = joinUrl(s);
+  $('shareLinkBtn').textContent = navigator.share ? 'Share' : 'Copy';
+  $('shareLinkHint').innerHTML = `Anyone with this link can join after signing in.` +
+    (s.role === 'owner' ? ` <button type="button" class="btn-link-text" id="resetLinkBtn">Reset link</button>` : '');
+  if($('resetLinkBtn')) $('resetLinkBtn').onclick = async () => {
+    if(!confirm('Make a new invite link? The old link stops working (people who already joined keep access).')) return;
+    try{ s.shareCode = await Cloud.resetShareCode(s); $('shareLink').value = joinUrl(s); toast('New link ready'); }
+    catch(err){ toast(err.message); }
+  };
+  openSheet('shareSheet');
+  renderCollaborators(s);
+}
+
+async function renderCollaborators(s){
+  const box = $('collabList');
+  let data;
+  try{ data = await Cloud.collaborators(s); }
+  catch(err){ box.innerHTML = `<div class="hint">${escapeHtml(err.message)}</div>`; return; }
+  s.collaborators = data.members.length;
+  const isOwner = s.role === 'owner';
+  box.innerHTML = data.members.map(m => `
+    <div class="collab-row">
+      <span class="user-avatar">${escapeHtml(initials(m.name || m.email || '?'))}</span>
+      <span class="who">${escapeHtml(m.name || m.email)}${m.userId === user.id ? ' (you)' : ''}<small>${escapeHtml(m.email || '')}</small></span>
+      <span class="role">${m.role}</span>
+      ${isOwner && m.userId !== user.id ? `<button class="btn-icon" data-remove-user="${m.userId}" title="Remove access">✕</button>` : ''}
+    </div>`).join('') + data.invites.map(email => `
+    <div class="collab-row">
+      <span class="user-avatar" style="background:var(--paper-dim)">✉</span>
+      <span class="who">${escapeHtml(email)}<small>Invited — joins when they sign up</small></span>
+      <button class="btn-icon" data-cancel-invite="${escapeHtml(email)}" title="Cancel invite">✕</button>
+    </div>`).join('');
+}
+
+$('collabList').addEventListener('click', async e => {
+  const s = cur();
+  const rm = e.target.closest('[data-remove-user]');
+  const ci = e.target.closest('[data-cancel-invite]');
+  try{
+    if(rm){
+      if(!confirm('Remove this person’s access to the split?')) return;
+      await Cloud.removeCollaborator(s, rm.dataset.removeUser);
+    } else if(ci){
+      await Cloud.cancelInvite(s, ci.dataset.cancelInvite);
+    } else return;
+    renderCollaborators(s);
+  } catch(err){ toast(err.message); }
+});
+
+$('inviteForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const s = cur();
+  const email = $('inviteEmail').value.trim();
+  try{
+    const result = await Cloud.invite(s, email);
+    $('inviteEmail').value = '';
+    toast(result === 'added' ? `${email} now has access` : `Invite saved — send them the link so they can sign up`);
+    renderCollaborators(s);
+  } catch(err){ toast(err.message); }
+});
+
+$('shareLinkBtn').onclick = async () => {
+  const s = cur();
+  const url = joinUrl(s);
+  if(navigator.share){
+    try{ await navigator.share({ title: `SplitEasy · ${s.name}`, text: `Join "${s.name}" on SplitEasy and add your expenses:`, url }); return; }
+    catch(err){ if(err.name === 'AbortError') return; }
+  }
+  try{ await navigator.clipboard.writeText(url); toast('Invite link copied'); }
+  catch(_){ $('shareLink').select(); document.execCommand('copy'); toast('Invite link copied'); }
+};
+
+/* ---------------- CLOUD: JOIN LINK ---------------- */
+function renderJoin(code){
+  const box = $('importBody');
+  showView('import');
+  if(!CLOUD){
+    box.innerHTML = `<div class="step-title">Online sharing isn't set up</div>
+      <p class="hint">This copy of SplitEasy isn't connected to a database, so invite links don't work here.</p>
+      <a href="#/" class="btn-primary btn-link" style="padding:11px 20px;">Go home</a>`;
+    return;
+  }
+  box.innerHTML = `<div class="split-hero-type" style="color:var(--sage)">You're invited</div>
+    <div class="step-title" style="font-size:26px;">Join a shared split</div>
+    <p class="hint" style="font-size:13.5px;">Sign in or create an account to see the split and add your expenses. Everyone sees changes live.</p>
+    <div class="form-actions"><button class="btn-primary" id="joinBtn">${user ? 'Join split' : 'Sign in to join'}</button></div>`;
+  const join = async () => {
+    try{
+      const id = await Cloud.joinByCode(code);
+      const s = await Cloud.loadSplit(id);
+      if(s) splits[id] = s;
+      toast('You joined the split');
+      history.replaceState(null, '', `#/split/${encodeURIComponent(id)}`);
+      route();
+    } catch(err){ toast(err.message); }
+  };
+  $('joinBtn').onclick = () => requireLogin(join);
+  if(user && !cloudLoading) join();
+}
+
+/* ---------------- CLOUD: DEVICE SPLITS → ACCOUNT ---------------- */
+function renderUploadBanner(){
+  const banner = $('uploadBanner');
+  const local = CLOUD && user ? Object.values(load(SPLITS_KEY, {})) : [];
+  banner.hidden = local.length === 0;
+  if(!local.length) return;
+  banner.innerHTML = `<span>📲 ${local.length} split${local.length > 1 ? 's are' : ' is'} saved only on this device. Move ${local.length > 1 ? 'them' : 'it'} to your account to share and sync.</span>
+    <button class="btn-small" id="uploadBtn">Move to my account</button>`;
+  $('uploadBtn').onclick = async function(){
+    this.disabled = true; this.textContent = 'Uploading…';
+    const remaining = load(SPLITS_KEY, {});
+    for(const ls of Object.values(remaining)){
+      try{
+        const saved = await Cloud.uploadSplit(ls);
+        splits[saved.id] = saved;
+        delete remaining[ls.id];
+        save(SPLITS_KEY, remaining);
+      } catch(err){ toast(`Couldn't upload "${ls.name}": ${err.message}`); break; }
+    }
+    if(!Object.keys(remaining).length) localStorage.removeItem(SPLITS_KEY);
+    renderSplitList();
+  };
+}
+
+/* ---------------- CLOUD: REALTIME ---------------- */
+let liveStatus = '';
+
+// Re-draw whatever is on screen after data changed underneath it.
+function rerender(splitId){
+  if(currentView === 'split'){
+    if(!getSplit(currentSplitId)){ toast('This split was deleted or you no longer have access'); location.hash = '#/splits'; return; }
+    if(!splitId || splitId === currentSplitId) renderSplitDetail(currentSplitId, true);
+  } else if(currentView === 'splits'){
+    renderSplitList(true);
+  } else if(currentView === 'home'){
+    renderHome();
+  }
+}
+
+function findEntrySplit(entryId){
+  return Object.values(splits).find(s => s.entries.some(e => e.id === entryId));
+}
+
+const liveHandlers = {
+  entryChanged(en){
+    const s = getSplit(en.splitId);
+    if(!s) return;
+    const i = s.entries.findIndex(x => x.id === en.id);
+    if(i >= 0) s.entries[i] = en; else s.entries.push(en);
+    rerender(s.id);
+  },
+  entryDeleted(id){
+    const s = findEntrySplit(id);
+    if(!s) return;
+    s.entries = s.entries.filter(x => x.id !== id);
+    if(editingEntryId === id && !$('entrySheet').hidden){ closeSheet('entrySheet'); toast('Someone deleted this entry'); }
+    rerender(s.id);
+  },
+  splitChanged(id, apply){
+    const s = getSplit(id);
+    if(s){ apply(s); rerender(id); }
+    else refreshSplit(id);
+  },
+  splitDeleted(id){
+    if(!getSplit(id)) return;
+    delete splits[id];
+    rerender(id);
+  },
+  accessChanged(type, row){
+    if(!row || !row.split_id) return;
+    if(type === 'DELETE' && row.user_id === user.id){ delete splits[row.split_id]; rerender(row.split_id); return; }
+    refreshSplit(row.split_id);   // someone joined/left, or we were added
+  },
+  status(st){
+    liveStatus = st;
+    if(currentView === 'split') $('liveDot').hidden = st !== 'SUBSCRIBED';
+  }
+};
+
 /* ---------------- INIT ---------------- */
-renderAuth();
-route();
+let signedInAs = null;
+
+async function onSignedIn(session){
+  if(signedInAs === session.user.id) return;
+  signedInAs = session.user.id;
+  cloudLoading = true;
+  user = await Cloud.profileFor(session);
+  renderAuth();
+  try{
+    const joined = await Cloud.acceptInvites();
+    if(joined) toast(`You were added to ${joined} shared split${joined > 1 ? 's' : ''}`);
+  } catch(_){ /* invites are best-effort */ }
+  try{ splits = await Cloud.loadAll(); }
+  catch(err){ toast('Could not load your splits: ' + err.message); }
+  cloudLoading = false;
+  Cloud.subscribe(liveHandlers);
+  const back = takeReturn();
+  if(!$('loginSheet').hidden) finishLogin();
+  else if(back && back !== location.hash && (!location.hash || location.hash === '#/')) location.hash = back;
+  else route();
+}
+
+function onSignedOut(){
+  signedInAs = null;
+  user = null;
+  splits = {};
+  cloudLoading = false;
+  renderAuth();
+  route();
+}
+
+async function init(){
+  if(window.Cloud && Cloud.configured && !Cloud.enabled){
+    toast('Could not reach the sync service — running offline');
+  }
+  if(!CLOUD){
+    renderAuth();
+    route();
+    return;
+  }
+  renderAuth();
+  route();
+  Cloud.onAuthChange((event, session) => {
+    if(session) onSignedIn(session);
+    else if(event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') onSignedOut();
+  });
+  // Reload when coming back to the tab, in case realtime missed something while asleep.
+  document.addEventListener('visibilitychange', async () => {
+    if(document.visibilityState !== 'visible' || !user || cloudLoading) return;
+    try{ splits = await Cloud.loadAll(); rerender(); } catch(_){}
+  });
+}
+init();
+

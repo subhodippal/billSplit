@@ -1,10 +1,12 @@
-const CACHE_NAME = "spliteasy-v2";
+const CACHE_NAME = "spliteasy-v3";
 
 const urlsToCache = [
     "./",
     "./index.html",
     "./style.css",
     "./script.js",
+    "./config.js",
+    "./cloud.js",
     "./manifest.json",
     "./icons/icon-192.png",
     "./icons/icon-512.png"
@@ -30,11 +32,8 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
     const req = event.request;
     if (req.method !== "GET") return;
-    const sameOrigin = new URL(req.url).origin === self.location.origin;
-    if (!sameOrigin) {
-        event.respondWith(caches.match(req).then(r => r || fetch(req)));
-        return;
-    }
+    // Leave other origins alone (Supabase API/auth/realtime, CDNs, fonts).
+    if (new URL(req.url).origin !== self.location.origin) return;
     event.respondWith(
         fetch(req)
             .then(res => {

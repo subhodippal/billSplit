@@ -29,6 +29,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="cloud.js"></script>
 <script>
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
@@ -85,6 +88,7 @@ if ("serviceWorker" in navigator) {
       <h2 class="view-title">Your splits</h2>
       <a href="#/new" class="btn-primary btn-small btn-link">＋ New</a>
     </div>
+    <div class="banner" id="uploadBanner" hidden></div>
     <div class="split-list" id="splitList"></div>
   </section>
 
@@ -172,7 +176,7 @@ if ("serviceWorker" in navigator) {
     </div>
 
     <div class="split-hero">
-      <div class="split-hero-type" id="detailType"></div>
+      <div class="split-hero-type"><span id="detailType"></span><span class="live-dot" id="liveDot" hidden title="Live — updates from your group appear instantly">● LIVE</span></div>
       <h2 class="split-hero-title" id="detailName"></h2>
       <div class="split-hero-meta" id="detailMeta"></div>
     </div>
@@ -330,23 +334,65 @@ if ("serviceWorker" in navigator) {
 <div class="sheet-backdrop" id="loginSheet" hidden>
   <form class="sheet sheet-sm" id="loginForm" autocomplete="on">
     <div class="sheet-head">
-      <h3>Log in</h3>
+      <h3 id="loginTitle">Log in</h3>
       <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
-      <p class="hint" style="margin-top:0;">Your name is used as the default <strong>Paid by</strong> and is stamped on every entry you add.</p>
-      <label class="field-label" for="loginName">Your name</label>
-      <input type="text" id="loginName" placeholder="e.g. Subho" required maxlength="40" autocomplete="name">
-      <div style="height:12px"></div>
-      <label class="field-label" for="loginEmail">Email (optional)</label>
+      <div class="seg" id="loginTabs" hidden>
+        <button type="button" data-mode="signin" class="active">Sign in</button>
+        <button type="button" data-mode="signup">Create account</button>
+      </div>
+      <p class="hint" id="loginIntro" style="margin-top:0;">Your name is used as the default <strong>Paid by</strong> and is stamped on every entry you add.</p>
+      <div id="loginNameWrap">
+        <label class="field-label" for="loginName">Your name</label>
+        <input type="text" id="loginName" placeholder="e.g. Subho" maxlength="40" autocomplete="name">
+        <div style="height:12px"></div>
+      </div>
+      <label class="field-label" for="loginEmail" id="loginEmailLabel">Email (optional)</label>
       <input type="email" id="loginEmail" placeholder="you@example.com" maxlength="120" autocomplete="email">
+      <div id="loginPasswordWrap" hidden>
+        <div style="height:12px"></div>
+        <label class="field-label" for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="At least 6 characters" minlength="6" autocomplete="current-password">
+        <div class="hint">or <button type="button" class="btn-link-text" id="magicLinkBtn">email me a sign-in link</button> instead — no password needed.</div>
+      </div>
+      <div class="form-msg" id="loginMsg" hidden></div>
     </div>
     <div class="sheet-foot">
       <span style="flex:1"></span>
       <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
-      <button type="submit" class="btn-primary">Continue</button>
+      <button type="submit" class="btn-primary" id="loginSubmit">Continue</button>
     </div>
   </form>
+</div>
+
+<!-- ============ SHARE SHEET (cloud) ============ -->
+<div class="sheet-backdrop" id="shareSheet" hidden>
+  <div class="sheet sheet-sm">
+    <div class="sheet-head">
+      <h3>Share split</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint" style="margin-top:0;">Everyone you share with can add, edit and delete entries — changes show up for all of you instantly.</p>
+      <label class="field-label" for="inviteEmail">Invite by email</label>
+      <form class="add-inline" id="inviteForm" style="margin-top:0;">
+        <input type="email" id="inviteEmail" placeholder="friend@example.com" required maxlength="120">
+        <button type="submit" class="btn-sage">Invite</button>
+      </form>
+      <div class="hint">If they don't have an account yet, they get access as soon as they sign up with that email.</div>
+
+      <div class="section-label">Or send an invite link</div>
+      <div class="share-box">
+        <input type="text" id="shareLink" readonly>
+        <button type="button" class="btn-primary" id="shareLinkBtn">Copy</button>
+      </div>
+      <div class="hint" id="shareLinkHint"></div>
+
+      <div class="section-label">Has access</div>
+      <div id="collabList"><div class="hint">Loading…</div></div>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
