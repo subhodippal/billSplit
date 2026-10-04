@@ -1,12 +1,12 @@
 {
   "name": "SplitEasy",
   "short_name": "SplitEasy",
-  "description": "Split trip expenses with friends easily.",
+  "description": "Split trip, party and group expenses with friends easily.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#16a34a",
+  "background_color": "#1B2420",
+  "theme_color": "#1B2420",
   "orientation": "portrait",
   "icons": [
     {

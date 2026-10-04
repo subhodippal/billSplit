@@ -2,44 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#22c55e">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="author" content="Subhodip Pal">
+<meta name="description" content="Track trip, party and group expenses, split bills among friends, and know exactly who owes whom.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="SplitEasy | Split Trip Expenses Easily">
 <meta property="og:description" content="Track expenses, split bills among friends, and know exactly who owes whom.">
 <meta property="og:url" content="https://subhodippal.github.io/billSplit/">
 <meta property="og:image" content="https://subhodippal.github.io/billSplit/preview.png">
+<meta property="og:site_name" content="SplitEasy">
+<title>SplitEasy | Split Trip Expenses Easily</title>
 
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="shortcut icon" href="icons/favicon.ico">
-
-<!-- Apple -->
 <link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#16a34a">
-
-<!-- Mobile -->
+<meta name="theme-color" content="#1B2420">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="SplitEasy">
 
-<meta property="og:site_name" content="SplitEasy">
-<title>SplitEasy | Split Trip Expenses Easily</title>
-
-<meta name="theme-color" content="#16a34a">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="icon"
-href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💸</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link rel="stylesheet" href="style.css">
-</head>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="cloud.js"></script>
 <script>
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
@@ -47,129 +39,364 @@ if ("serviceWorker" in navigator) {
     });
 }
 </script>
+</head>
 <body>
-<div class="wrap">
 
-  <header class="hero">
-    <div class="eyebrow">✈︎ • TRAVEL • SPEND • SPLIT • REPEAT • ✈︎</div>
-    <h1 class="title">💸 SplitEasy ₹</h1>
-    <p class="subtitle">From road trips to weekend getaways, SplitEasy keeps every shared expense organized.</p>
-  </header>
+<!-- ============ HEADER ============ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="#/" class="brand" aria-label="SplitEasy home">
+      <span class="brand-mark">💸</span>
+      <span class="brand-name">SplitEasy</span>
+    </a>
+    <div class="topbar-actions">
+      <button id="installBtn" class="btn-ghost-light btn-small" style="display:none;">Install</button>
+      <div id="authArea"></div>
+    </div>
+  </div>
+</header>
 
-  <!-- STEP 1: FRIENDS -->
-  <section class="ticket notch">
-    <div class="ticket-inner">
-      <div class="step-head">
-        <span class="step-num">STEP 01</span>
-        <span class="step-title">Who's on this trip?</span>
-      </div>
-      <div class="step-desc">Add at least one name</div>
-      <div class="add-inline">
-        <input type="text" id="friendInput" placeholder="Type a name, e.g. Subho" onkeydown="if(event.key==='Enter'){addFriend();}">
-        <button class="btn-primary" onclick="addFriend()">Add friend</button>
-      </div>
-      <div class="chip-list" id="friendChips"></div>
+<main class="wrap" id="app">
+
+  <!-- ============ HOME ============ -->
+  <section class="view" id="view-home">
+    <div class="hero">
+      <div class="eyebrow">✈︎ • TRAVEL • PARTY • SPLIT • REPEAT • ✈︎</div>
+      <h1 class="title" id="homeGreeting">Split every bill, fairly.</h1>
+      <p class="subtitle">Trips, parties, flatmates — log who paid, who's in, and SplitEasy tells you who owes whom.</p>
+    </div>
+
+    <div class="home-cards">
+      <a href="#/splits" class="home-card">
+        <div class="home-card-icon">📒</div>
+        <div class="home-card-title">View splits</div>
+        <div class="home-card-desc">See all your previously created split lists</div>
+        <div class="home-card-meta" id="homeSplitCount"></div>
+      </a>
+      <a href="#/new" class="home-card home-card-accent">
+        <div class="home-card-icon">＋</div>
+        <div class="home-card-title">Create new</div>
+        <div class="home-card-desc">Start a new split for a trip, party or anything shared</div>
+      </a>
     </div>
   </section>
 
-  <!-- STEP 2: PASTE BULK -->
-  <section class="ticket notch">
-    <div class="ticket-inner">
-      <div class="step-head">
-        <span class="step-num">STEP 02</span>
-        <span class="step-title">Paste a batch of expenses</span>
-      </div>
-      <div class="step-desc">One expense per line, format: <code class="k">purpose, amount, paid by</code></div>
-      <textarea id="pasteArea" placeholder="tickets, 2870, Subho&#10;food, 2100, Suman&#10;shopping, 6999, pabitra"></textarea>
-      <div class="hint">Pasted rows include everyone added in Step 1 by default. Use <strong>Edit</strong> on the row afterward if someone should be excluded (like Ayan skipping the food bill).</div>
-      <div style="margin-top:14px;">
-        <button class="btn-sage" onclick="parsePaste()">Add pasted expenses</button>
-      </div>
+  <!-- ============ LIST ============ -->
+  <section class="view" id="view-splits">
+    <div class="view-head">
+      <a href="#/" class="back-link">← Home</a>
+      <h2 class="view-title">Your splits</h2>
+      <a href="#/new" class="btn-primary btn-small btn-link">＋ New</a>
     </div>
+    <div class="banner" id="uploadBanner" hidden></div>
+    <div class="split-list" id="splitList"></div>
   </section>
 
-
-
-  <!-- STEP 3: MANUAL ENTRY -->
-  <section class="ticket notch">
-    <div class="ticket-inner">
-      <div class="step-head">
-        <span class="step-num">STEP 03</span>
-        <span class="step-title">Log an expense</span>
-      </div>
-      <div class="step-desc">add or edit more expenses</div>
-      <div class="row-flex">
-        <div>
-          <label class="field-label">Purpose</label>
-          <input type="text" id="expPurpose" placeholder="e.g. Dinner">
-        </div>
-        <div>
-          <label class="field-label">Amount</label>
-          <input type="number" id="expAmount" placeholder="0" min="0" step="0.01">
-        </div>
-        <div>
-          <label class="field-label">Paid by</label>
-          <select id="expPaidBy"></select>
-        </div>
-      </div>
-      <div style="margin-top:16px;">
-        <label class="field-label">Split among (uncheck to exclude someone)</label>
-        <div class="split-box" id="splitBox"></div>
-      </div>
-      <div style="margin-top:18px;">
-        <button class="btn-sage" onclick="submitExpenseForm()" id="expSubmitBtn">Add expense</button>
-        <button class="btn-ghost" style="margin-left:8px; display:none;" id="cancelEditBtn" onclick="cancelEdit()">Cancel edit</button>
-      </div>
-
-      <hr class="perf">
-
-      <table class="expense-table" id="expenseTable">
-        <thead>
-          <tr><th>Purpose</th><th>Amount</th><th>Paid by</th><th>Split among</th><th></th></tr>
-        </thead>
-        <tbody id="expenseTableBody"></tbody>
-      </table>
-      <div class="empty-note" id="emptyExpenseNote"></div>
+  <!-- ============ CREATE / EDIT DETAILS ============ -->
+  <section class="view" id="view-new">
+    <div class="view-head">
+      <a href="#/" class="back-link" id="newBackLink">← Home</a>
+      <h2 class="view-title" id="newTitle">New split</h2>
+      <span></span>
     </div>
+
+    <form class="ticket" id="splitForm" autocomplete="off">
+      <div class="ticket-inner">
+        <div class="step-head">
+          <span class="step-num">STEP 01</span>
+          <span class="step-title">What's this split for?</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="span-2">
+            <label class="field-label" for="splitName">Name</label>
+            <input type="text" id="splitName" placeholder="e.g. Goa trip 2026, Rohan's birthday" required maxlength="80">
+          </div>
+          <div>
+            <label class="field-label" for="splitType">Purpose</label>
+            <select id="splitType">
+              <option>Travel</option>
+              <option>Party</option>
+              <option>Dinner</option>
+              <option>Home / Flat</option>
+              <option>Event</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div>
+            <label class="field-label" for="splitCurrency">Currency</label>
+            <select id="splitCurrency">
+              <option value="₹">₹ INR</option>
+              <option value="$">$ USD</option>
+              <option value="€">€ EUR</option>
+              <option value="£">£ GBP</option>
+              <option value="৳">৳ BDT</option>
+              <option value="AED ">AED</option>
+            </select>
+          </div>
+          <div class="span-2">
+            <label class="field-label" for="splitLocation">Location</label>
+            <div class="input-with-btn">
+              <input type="text" id="splitLocation" placeholder="e.g. Darjeeling, West Bengal" maxlength="120">
+              <button type="button" class="btn-ghost geo-btn" id="splitGeoBtn" title="Use my current location">📍 Locate</button>
+            </div>
+            <div class="hint" id="splitGeoInfo"></div>
+          </div>
+        </div>
+
+        <hr class="perf">
+
+        <div class="step-head">
+          <span class="step-num">STEP 02</span>
+          <span class="step-title">Who's in the group?</span>
+        </div>
+        <div class="step-desc">You're added automatically. You can add more people later too.</div>
+        <div class="add-inline">
+          <input type="text" id="memberInput" placeholder="Type a name, e.g. Alex" maxlength="40">
+          <button type="button" class="btn-sage" id="memberAddBtn">Add</button>
+        </div>
+        <div class="chip-list" id="memberChips"></div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="splitSubmitBtn">Create split →</button>
+        </div>
+      </div>
+    </form>
   </section>
 
-  
-
-  <!-- STEP 4: CALCULATE -->
-  <section class="ticket no-notch">
-    <div class="ticket-inner">
-      <div class="step-head">
-        <span class="step-num">STEP 04</span>
-        <span class="step-title">Settle the ledger</span>
+  <!-- ============ SPLIT DETAIL ============ -->
+  <section class="view" id="view-split">
+    <div class="view-head">
+      <a href="#/splits" class="back-link">← All splits</a>
+      <span></span>
+      <div class="head-actions">
+        <button class="btn-ghost-light btn-small" id="shareBtn">↗ Share</button>
+        <button class="btn-ghost-light btn-small" id="editDetailsBtn">Edit</button>
       </div>
-      <button class="btn-primary" onclick="calculate()">Calculate split</button>
+    </div>
 
-      <div id="resultsArea" style="margin-top:26px; display:none;">
+    <div class="split-hero">
+      <div class="split-hero-type"><span id="detailType"></span><span class="live-dot" id="liveDot" hidden title="Live — updates from your group appear instantly">● LIVE</span></div>
+      <h2 class="split-hero-title" id="detailName"></h2>
+      <div class="split-hero-meta" id="detailMeta"></div>
+    </div>
+
+    <!-- Members -->
+    <section class="ticket no-notch">
+      <div class="ticket-inner">
+        <div class="step-head">
+          <span class="step-title">People</span>
+          <span class="step-desc-inline">tap a name to rename</span>
+        </div>
+        <div class="chip-list" id="detailMembers"></div>
+        <div class="add-inline">
+          <input type="text" id="detailMemberInput" placeholder="Add someone to the group" maxlength="40">
+          <button type="button" class="btn-sage" id="detailMemberAddBtn">Add</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Entries -->
+    <section class="ticket no-notch">
+      <div class="ticket-inner">
+        <div class="entries-head">
+          <div class="step-head" style="margin:0;">
+            <span class="step-title">Entries</span>
+          </div>
+          <button class="btn-primary" id="addEntryBtn">＋ Add entry</button>
+        </div>
+
+        <div class="totals-strip" id="totalsStrip"></div>
+
+        <div class="table-wrap">
+          <table class="entry-table" id="entryTable">
+            <thead>
+              <tr>
+                <th>Date &amp; time</th>
+                <th class="num">Amount</th>
+                <th>Purpose</th>
+                <th>Pay via</th>
+                <th>Paid by</th>
+                <th>Location</th>
+                <th>Note</th>
+                <th>Split with</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="entryBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-note" id="entryEmpty">No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.</div>
+      </div>
+    </section>
+
+    <!-- Settle -->
+    <section class="ticket no-notch">
+      <div class="ticket-inner">
+        <div class="step-head">
+          <span class="step-title">Settle up</span>
+        </div>
         <div id="downloadArea">
           <div class="result-grid" id="statGrid"></div>
-
-          <div class="section-label">Who spent how much</div>
-          <div id="spentList"></div>
-
-          <div class="section-label">Who owes what (share of total)</div>
+          <div class="section-label">Who paid / owes what</div>
           <div id="shareList"></div>
-
           <div class="section-label">Settle up — minimum transactions</div>
           <div id="settleList"></div>
         </div>
-
-        <div style="margin-top:22px;">
-          <button class="btn-primary" onclick="downloadSnapshot()">⬇ Download snapshot</button>
+        <div class="form-actions">
+          <button class="btn-ghost" id="snapshotBtn">⬇ Download snapshot</button>
+          <button class="btn-ghost danger" id="deleteSplitBtn">Delete split</button>
         </div>
       </div>
+    </section>
+  </section>
+
+  <!-- ============ IMPORT (shared link) ============ -->
+  <section class="view" id="view-import">
+    <div class="ticket no-notch">
+      <div class="ticket-inner" id="importBody"></div>
     </div>
   </section>
 
   <footer class="foot">— Made with ❤️ by Subho —</footer>
-  <button id="installBtn" style="display:none;">
-    Install App
-  </button>
+</main>
+
+<!-- ============ ENTRY SHEET ============ -->
+<div class="sheet-backdrop" id="entrySheet" hidden>
+  <form class="sheet" id="entryForm" autocomplete="off">
+    <div class="sheet-head">
+      <h3 id="entryFormTitle">Add entry</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="form-grid">
+        <div>
+          <label class="field-label" for="eDate">Date &amp; time</label>
+          <input type="datetime-local" id="eDate" required>
+        </div>
+        <div>
+          <label class="field-label" for="eAmount">Amount</label>
+          <div class="amount-field">
+            <button type="button" class="sign-toggle minus" id="eSign" title="Tap to switch between paid out (−) and received (+)">−</button>
+            <input type="number" id="eAmount" placeholder="0" min="0" step="0.01" inputmode="decimal" required>
+          </div>
+          <div class="hint" id="eSignHint">Expense (deducted). Tap − to switch to + for money received / refunds.</div>
+        </div>
+        <div class="span-2">
+          <label class="field-label" for="ePurpose">Purpose</label>
+          <input type="text" id="ePurpose" placeholder="e.g. Dinner, Train tickets, Hotel" required maxlength="80" list="purposeList">
+          <datalist id="purposeList"></datalist>
+        </div>
+        <div>
+          <label class="field-label" for="ePayVia">Pay via</label>
+          <select id="ePayVia"></select>
+        </div>
+        <div>
+          <label class="field-label" for="ePaidBy">Paid by</label>
+          <select id="ePaidBy"></select>
+        </div>
+        <div class="span-2">
+          <label class="field-label" for="eLocation">Location</label>
+          <div class="input-with-btn">
+            <input type="text" id="eLocation" placeholder="Where was this?" maxlength="120">
+            <button type="button" class="btn-ghost geo-btn" id="eGeoBtn" title="Use my current location">📍</button>
+          </div>
+          <div class="hint" id="eGeoInfo"></div>
+        </div>
+        <div class="span-2">
+          <label class="field-label" for="eNote">Note</label>
+          <input type="text" id="eNote" placeholder="e.g. Alex & Max brought their own food" maxlength="200">
+        </div>
+        <div class="span-2">
+          <div class="split-label-row">
+            <label class="field-label" style="margin:0;">Split with <span id="eSplitCount"></span></label>
+            <span>
+              <button type="button" class="btn-link-text" id="eSplitAll">All</button> ·
+              <button type="button" class="btn-link-text" id="eSplitNone">None</button>
+            </span>
+          </div>
+          <div class="hint" style="margin:2px 0 8px;">Shared with everyone by default — tap a name to exclude them from this item.</div>
+          <div class="split-box" id="eSplitBox"></div>
+        </div>
+      </div>
+      <div class="hint added-by" id="eAddedBy"></div>
+    </div>
+    <div class="sheet-foot">
+      <button type="button" class="btn-ghost danger" id="eDeleteBtn" style="display:none;">Delete</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+      <button type="submit" class="btn-primary" id="eSubmitBtn">Add entry</button>
+    </div>
+  </form>
 </div>
+
+<!-- ============ LOGIN SHEET ============ -->
+<div class="sheet-backdrop" id="loginSheet" hidden>
+  <form class="sheet sheet-sm" id="loginForm" autocomplete="on">
+    <div class="sheet-head">
+      <h3 id="loginTitle">Log in</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="seg" id="loginTabs" hidden>
+        <button type="button" data-mode="signin" class="active">Sign in</button>
+        <button type="button" data-mode="signup">Create account</button>
+      </div>
+      <p class="hint" id="loginIntro" style="margin-top:0;">Your name is used as the default <strong>Paid by</strong> and is stamped on every entry you add.</p>
+      <div id="loginNameWrap">
+        <label class="field-label" for="loginName">Your name</label>
+        <input type="text" id="loginName" placeholder="e.g. Subho" maxlength="40" autocomplete="name">
+        <div style="height:12px"></div>
+      </div>
+      <label class="field-label" for="loginEmail" id="loginEmailLabel">Email (optional)</label>
+      <input type="email" id="loginEmail" placeholder="you@example.com" maxlength="120" autocomplete="email">
+      <div id="loginPasswordWrap" hidden>
+        <div style="height:12px"></div>
+        <label class="field-label" for="loginPassword">Password</label>
+        <input type="password" id="loginPassword" placeholder="At least 6 characters" minlength="6" autocomplete="current-password">
+        <div class="hint">or <button type="button" class="btn-link-text" id="magicLinkBtn">email me a sign-in link</button> instead — no password needed.</div>
+      </div>
+      <div class="form-msg" id="loginMsg" hidden></div>
+    </div>
+    <div class="sheet-foot">
+      <span style="flex:1"></span>
+      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+      <button type="submit" class="btn-primary" id="loginSubmit">Continue</button>
+    </div>
+  </form>
+</div>
+
+<!-- ============ SHARE SHEET (cloud) ============ -->
+<div class="sheet-backdrop" id="shareSheet" hidden>
+  <div class="sheet sheet-sm">
+    <div class="sheet-head">
+      <h3>Share split</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint" style="margin-top:0;">Everyone you share with can add, edit and delete entries — changes show up for all of you instantly.</p>
+      <label class="field-label" for="inviteEmail">Invite by email</label>
+      <form class="add-inline" id="inviteForm" style="margin-top:0;">
+        <input type="email" id="inviteEmail" placeholder="friend@example.com" required maxlength="120">
+        <button type="submit" class="btn-sage">Invite</button>
+      </form>
+      <div class="hint">If they don't have an account yet, they get access as soon as they sign up with that email.</div>
+
+      <div class="section-label">Or send an invite link</div>
+      <div class="share-box">
+        <input type="text" id="shareLink" readonly>
+        <button type="button" class="btn-primary" id="shareLinkBtn">Copy</button>
+      </div>
+      <div class="hint" id="shareLinkHint"></div>
+
+      <div class="section-label">Has access</div>
+      <div id="collabList"><div class="hint">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script src="script.js"></script>
 </body>
 </html>
