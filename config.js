@@ -4,7 +4,8 @@
    runs in offline mode, saving splits on this device only.
    The anon (public) key is safe to ship in the browser: access is enforced by
    the row-level security rules in supabase/schema.sql. */
+
 window.SPLITEASY_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://fzmdrfmcszehkscbzkhl.supabase.co',
+  supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6bWRyZm1jc3plaGtzY2J6a2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwOTA2MTIsImV4cCI6MjEwNjY2NjYxMn0.7qRnBKYwhiZyoyWv0HTLsb7KZz5eHWva_cPkphdavjE'
 };
