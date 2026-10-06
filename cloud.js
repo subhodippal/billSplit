@@ -136,12 +136,20 @@
       name = googleName;
       await sb.from('profiles').update({ display_name: name }).eq('id', session.user.id);
     }
-    return {
-      id: session.user.id,
-      email: session.user.email,
-      name,
-      avatar: meta.avatar_url || meta.picture || ''
-    };
+    const avatar = meta.avatar_url || meta.picture || '';
+    // Share the photo with the people in your splits (no-op until avatar_url exists in the schema).
+    if(avatar) sb.from('profiles').update({ avatar_url: avatar }).eq('id', session.user.id).then(() => {});
+    return { id: session.user.id, email: session.user.email, name, avatar };
+  };
+  // Photos of everyone with access to a split, keyed by lower-cased display name.
+  Cloud.splitAvatars = async function(s){
+    const rows = check(await sb.from('split_members').select('profiles(display_name, avatar_url)').eq('split_id', s.id));
+    const out = {};
+    rows.forEach(r => {
+      const p = r.profiles;
+      if(p && p.display_name && p.avatar_url) out[p.display_name.toLowerCase()] = p.avatar_url;
+    });
+    return out;
   };
   // Redirects to Google; comes back to this page with the session (new users are created automatically).
   Cloud.signInWithGoogle = async () => check(await sb.auth.signInWithOAuth({

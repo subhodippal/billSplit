@@ -22,6 +22,7 @@ const USER_KEY = 'se_user';
 const SPLITS_KEY = 'se_splits';
 const DEFAULT_PAY_MODES = ['Cash', 'UPI', 'Card', 'Bank transfer'];
 const NEW_OPTION = '__new__';
+const DEFAULT_CURRENCY = '₹';   // existing splits keep whatever currency they were made with
 
 function load(key, fallback){
   try{ const v = JSON.parse(localStorage.getItem(key)); return v ?? fallback; }
@@ -35,23 +36,95 @@ function save(key, value){
 // Cloud mode (Supabase configured): accounts + shared, live splits.
 // Otherwise: offline mode, everything lives in this browser.
 const CLOUD = !!(window.Cloud && Cloud.enabled);
+const IS_PWA = Store.isPWA;   // installed app: full offline copy in IndexedDB
+const GUEST_NAME = 'Me';      // who "you" are before logging in; swapped for your name on sync
 
 let user = CLOUD ? null : load(USER_KEY, null);    // {name, email, id?}
-let splits = CLOUD ? {} : load(SPLITS_KEY, {});   // {id: split}
-let cloudLoading = CLOUD;
+let splits = {};                                   // {id: split}
+let cloudLoading = true;
+let authReady = !CLOUD;
 
-function persistSplits(){ if(!CLOUD) save(SPLITS_KEY, splits); }
+// Not logged in (or no Supabase): splits live only on this device.
+function localMode(){ return !CLOUD || !user; }
+function me(){ return user ? user.name : GUEST_NAME; }
 function newId(prefix){ return CLOUD ? crypto.randomUUID() : uid(prefix); }
 
-// Save a change: in offline mode write to this device; in cloud mode run the
-// Supabase call, and if it fails re-pull the split so the screen matches the server.
-async function push(op, splitId){
-  if(!CLOUD){ persistSplits(); return true; }
-  try{ await op(); return true; }
-  catch(err){
-    toast(err.message || 'Could not save — check your connection');
-    if(splitId) await refreshSplit(splitId);
+let cacheTimer;
+function persistSplits(){
+  if(!localMode()){
+    // Logged in: the installed app keeps a copy of everything for offline use.
+    if(!IS_PWA) return;
+    clearTimeout(cacheTimer);
+    const key = cacheKey(), data = splits;
+    cacheTimer = setTimeout(() => Store.set(key, data).catch(() => {}), 300);
+    return;
+  }
+  Store.set(SPLITS_KEY, splits).catch(() => toast('Could not save — storage is full or blocked'));
+}
+function cacheKey(){ return 'cache_' + user.id; }
+function outboxKey(){ return 'outbox_' + user.id; }
+
+/* --- saving changes --- */
+// Each change is a small, replayable operation. Online it goes straight to
+// Supabase; in the installed app it's queued while offline and sent later.
+let outbox = [];
+let syncing = false;
+
+function isNetworkError(err){
+  return !navigator.onLine || /failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test((err && err.message) || '');
+}
+
+function runOp(op){
+  const s = getSplit(op.splitId);
+  switch(op.type){
+    case 'createSplit':   return s && Cloud.createSplit(s);
+    case 'saveSplitMeta': return s && Cloud.saveSplitMeta(s);
+    case 'addPerson':     return s && Cloud.addPerson(s, op.name);
+    case 'renamePerson':  return s && Cloud.renamePerson(s, op.from, op.to);
+    case 'removePerson':  return s && Cloud.removePerson(s, op.name);
+    case 'saveEntry': {
+      const en = s && s.entries.find(e => e.id === op.entryId);
+      return en && Cloud.saveEntry(s, en);
+    }
+    case 'deleteEntry':   return Cloud.deleteEntry({ id: op.entryId });
+    case 'deleteSplit':   return Cloud.deleteSplit({ id: op.splitId });
+    case 'leaveSplit':    return Cloud.leaveSplit({ id: op.splitId });
+  }
+}
+
+async function push(op){
+  if(localMode()){ persistSplits(); return true; }
+  // Keep order: once something is queued, later changes queue behind it.
+  if(IS_PWA && (outbox.length || !navigator.onLine)){ queueOp(op); return true; }
+  try{
+    await runOp(op);
+    persistSplits();
+    return true;
+  } catch(err){
+    if(IS_PWA && isNetworkError(err)){ queueOp(op); return true; }
+    toast(isNetworkError(err) ? 'You’re offline — that change wasn’t saved' : (err.message || 'Could not save'));
+    if(op.splitId) await refreshSplit(op.splitId);
     return false;
+  }
+}
+
+function queueOp(op){
+  outbox.push(op);
+  Store.set(outboxKey(), outbox).catch(() => {});
+  persistSplits();
+  renderStatusBar();
+}
+
+async function flushOutbox(){
+  while(outbox.length){
+    try{ await runOp(outbox[0]); }
+    catch(err){
+      if(isNetworkError(err)) throw err;   // still offline: keep the rest for later
+      toast(`A change made offline couldn’t be saved: ${err.message}`);
+    }
+    outbox.shift();
+    await Store.set(outboxKey(), outbox).catch(() => {});
+    renderStatusBar();
   }
 }
 
@@ -64,7 +137,7 @@ async function refreshSplit(id){
 }
 function getSplit(id){ return splits[id] || null; }
 function liveEntries(split){ return split.entries.filter(e => !e.deleted); }
-function touch(obj){ obj.updatedAt = Date.now(); if(user) obj.updatedBy = user.name; }
+function touch(obj){ obj.updatedAt = Date.now(); obj.updatedBy = me(); }
 
 /* ---------------- AUTH ---------------- */
 let afterLogin = null;
@@ -82,13 +155,22 @@ function renderAuth(){
       </div>`;
     $('avatarBtn').onclick = changeMyName;
     $('logoutBtn').onclick = async () => {
-      if(!confirm(CLOUD ? 'Log out of SplitEasy on this device?' : 'Log out? Your splits stay saved on this device.')) return;
+      const pending = CLOUD ? outbox.length : 0;
+      const msg = !CLOUD ? 'Log out? Your splits stay saved on this device.'
+        : pending ? `You have ${pending} change${pending > 1 ? 's' : ''} that haven’t synced yet — they’ll be lost if you log out now. Log out anyway?`
+        : 'Log out of SplitEasy on this device?';
+      if(!confirm(msg)) return;
       if(CLOUD){
+        const id = user.id;
         try{ await Cloud.signOut(); } catch(err){ toast(err.message); }
-        splits = {};
-      } else {
-        localStorage.removeItem(USER_KEY);
+        // Don't leave your account's offline copy behind on this device.
+        await Store.del('cache_' + id);
+        await Store.del('outbox_' + id);
+        await Store.del('last_user');
+        await onSignedOut();
+        return;
       }
+      localStorage.removeItem(USER_KEY);
       user = null;
       renderAuth();
       route();
@@ -135,7 +217,7 @@ function openLogin(then){
 
 function requireLogin(then){
   if(user){ then(); return; }
-  toast('Log in first so entries carry your name');
+  toast('Log in to continue');
   openLogin(then);
 }
 
@@ -154,8 +236,27 @@ $('loginForm').addEventListener('submit', (e) => {
   if(!name) return;
   user = { name, email: $('loginEmail').value.trim() };
   save(USER_KEY, user);
+  // Splits made before logging in become yours.
+  Object.keys(splits).forEach(id => { splits[id] = adoptGuestSplit(splits[id], name); });
+  persistSplits();
   finishLogin();
 });
+
+// Swap the "Me" placeholder for your real name everywhere in a split.
+function adoptGuestSplit(split, name){
+  const swap = n => n === GUEST_NAME ? name : n;
+  const s = JSON.parse(JSON.stringify(split));
+  s.members = dedupe(s.members.map(swap));
+  s.createdBy = swap(s.createdBy);
+  s.updatedBy = swap(s.updatedBy);
+  s.entries.forEach(e => {
+    e.paidBy = swap(e.paidBy);
+    e.addedBy = swap(e.addedBy);
+    e.updatedBy = swap(e.updatedBy);
+    e.splitAmong = dedupe(e.splitAmong.map(swap));
+  });
+  return s;
+}
 
 // Google sign-in leaves the page and comes back to the site root signed in;
 // onAuthStateChange → onSignedIn() then returns to the remembered screen.
@@ -184,6 +285,7 @@ function takeReturn(){
 function openSheet(id){ $(id).hidden = false; document.body.classList.add('no-scroll'); }
 function closeSheet(id){
   $(id).hidden = true;
+  if(id === 'confirmSheet' && confirmResolve) settleConfirm(false);   // ✕, backdrop or Esc = cancel
   if(document.querySelectorAll('.sheet-backdrop:not([hidden])').length === 0) document.body.classList.remove('no-scroll');
 }
 document.addEventListener('click', (e) => {
@@ -211,6 +313,12 @@ function showView(name, keepScroll){
   const changed = currentView !== name;
   currentView = name;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  document.querySelector('footer.foot').hidden = name !== 'home';
+  // Header back button goes one level up: split -> all splits -> home.
+  const up = { splits: '#/', split: '#/splits', import: '#/',
+    new: editingSplitId ? `#/split/${encodeURIComponent(editingSplitId)}` : '#/' }[name];
+  $('topBack').hidden = !up;
+  if(up) $('topBack').href = up;
   if(!keepScroll || changed) window.scrollTo(0, 0);
 }
 
@@ -221,7 +329,9 @@ function route(){
   document.querySelectorAll('.sheet-backdrop:not([hidden])').forEach(s => closeSheet(s.id));
 
   if(page === 'join' && arg) return renderJoin(arg);
-  if(CLOUD && cloudLoading && ['split', 'edit'].includes(page)) return renderLoading();
+  if(cloudLoading && ['split', 'edit'].includes(page)) return renderLoading();
+  // A split made before logging in gets a new id once it's uploaded.
+  if(page === 'split' && !getSplit(arg) && idRemap[arg]) return location.replace(`#/split/${encodeURIComponent(idRemap[arg])}`);
   if(page === 'splits') return renderSplitList();
   if(page === 'new') return renderSplitForm(null);
   if(page === 'edit' && getSplit(arg)) return renderSplitForm(arg);
@@ -246,16 +356,36 @@ function renderHome(){
 }
 
 /* ---------------- SPLIT LIST ---------------- */
-function renderSplitList(keepScroll){
-  renderUploadBanner();
-  if(CLOUD && !user){
-    $('splitList').innerHTML = `<div class="list-empty">
-      <p style="margin:0;">Log in to see your splits and the ones shared with you.</p></div>`;
-    showView('splits');
-    return;
+/* --- favourites (kept on this device) --- */
+const FAV_KEY = 'se_favs';
+let favourites = new Set(load(FAV_KEY, []));
+function isFavourite(id){ return favourites.has(id); }
+function setFavourite(id, on){
+  if(on) favourites.add(id); else favourites.delete(id);
+  save(FAV_KEY, [...favourites]);
+}
+
+// Star / delete buttons sit inside the card link, so stop them from opening the split.
+$('splitList').addEventListener('click', e => {
+  const fav = e.target.closest('[data-fav]');
+  const del = e.target.closest('[data-del]');
+  if(!fav && !del) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if(fav){
+    const on = !isFavourite(fav.dataset.fav);
+    setFavourite(fav.dataset.fav, on);
+    toast(on ? '★ Added to favourites' : 'Removed from favourites');
+    renderSplitList(true);
+  } else {
+    deleteSplitAsk(del.dataset.del);
   }
+});
+
+function renderSplitList(keepScroll){
   if(cloudLoading){ renderLoading(); return; }
-  const list = Object.values(splits).sort((a, b) => b.updatedAt - a.updatedAt);
+  // Favourites first, then most recently changed.
+  const list = Object.values(splits).sort((a, b) => (isFavourite(b.id) - isFavourite(a.id)) || (b.updatedAt - a.updatedAt));
   const box = $('splitList');
   if(list.length === 0){
     box.innerHTML = `<div class="list-empty">
@@ -266,15 +396,21 @@ function renderSplitList(keepScroll){
     box.innerHTML = list.map(s => {
       const entries = liveEntries(s);
       const spent = entries.filter(e => e.sign < 0).reduce((t, e) => t + e.amount, 0);
-      return `<a class="split-card" href="#/split/${encodeURIComponent(s.id)}">
+      const fav = isFavourite(s.id);
+      const leaving = !localMode() && s.role !== 'owner';
+      return `<a class="split-card ${fav ? 'is-fav' : ''}" href="#/split/${encodeURIComponent(s.id)}">
         <div class="split-card-top">
           <span class="tag">${escapeHtml(s.type)}</span>
           <span class="hint" style="margin:0;">${s.collaborators > 1 ? `👥 shared · ` : ''}${formatDay(s.createdAt)}</span>
+          <span class="card-actions">
+            <button type="button" class="card-btn fav-btn ${fav ? 'on' : ''}" data-fav="${s.id}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
+            <button type="button" class="card-btn del-btn" data-del="${s.id}" title="${leaving ? 'Leave split' : 'Delete split'}">🗑</button>
+          </span>
         </div>
         <div class="split-card-name">${escapeHtml(s.name)}</div>
         ${s.location ? `<div class="split-card-loc">📍 ${escapeHtml(s.location)}</div>` : ''}
         <div class="split-card-foot">
-          <span>${s.members.length} people · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}</span>
+          <span>${s.members.length} ${s.members.length === 1 ? 'person' : 'people'} · ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'}</span>
           <span class="split-card-total">${escapeHtml(s.currency)}${formatNum(spent)}</span>
         </div>
       </a>`;
@@ -292,28 +428,24 @@ function renderSplitForm(splitId){
   editingSplitId = splitId;
   const s = splitId ? getSplit(splitId) : null;
   $('newTitle').textContent = s ? 'Edit details' : 'New split';
-  $('newBackLink').href = s ? `#/split/${encodeURIComponent(s.id)}` : '#/';
-  $('newBackLink').textContent = s ? '← Back' : '← Home';
   $('splitSubmitBtn').textContent = s ? 'Save changes' : 'Create split →';
   $('splitName').value = s ? s.name : '';
   $('splitType').value = s ? s.type : 'Travel';
-  $('splitCurrency').value = s ? s.currency : '₹';
   $('splitLocation').value = s ? (s.location || '') : '';
   draftGeo = s ? s.geo : null;
   renderGeoInfo('splitGeoInfo', draftGeo);
   // Members are managed on the split page once it exists
   document.querySelectorAll('#splitForm .perf, #splitForm .perf ~ .step-head, #splitForm .perf ~ .step-desc, #splitForm .add-inline, #memberChips')
     .forEach(el => el.style.display = s ? 'none' : '');
-  draftMembers = user ? [user.name] : [];
+  draftMembers = [me()];
   renderDraftMembers();
   showView('new');
-  if(!s && !user) openLogin(() => renderSplitForm(null));
 }
 
 function renderDraftMembers(){
   $('memberChips').innerHTML = draftMembers.map(m => `
     <div class="chip"><span class="avatar-dot"></span><span>${escapeHtml(m)}</span>
-      ${user && m === user.name ? '<span class="you">YOU</span>&nbsp;' :
+      ${m === me() ? '<span class="you">YOU</span>&nbsp;' :
         `<button type="button" class="chip-x" data-remove="${escapeHtml(m)}" title="Remove">×</button>`}
     </div>`).join('');
 }
@@ -335,10 +467,13 @@ $('memberChips').addEventListener('click', e => {
   renderDraftMembers();
 });
 $('splitGeoBtn').onclick = () => captureGeo($('splitGeoBtn'), $('splitLocation'), 'splitGeoInfo', g => { draftGeo = g; });
+attachPlaceSuggest($('splitLocation'), {
+  onPick: g => { draftGeo = g; renderGeoInfo('splitGeoInfo', g); },
+  onType: () => { draftGeo = null; renderGeoInfo('splitGeoInfo', null); }
+});
 
 $('splitForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  if(!editingSplitId && !user){ openLogin(() => $('splitForm').requestSubmit()); return; }
   const name = $('splitName').value.trim();
   if(!name){ $('splitName').focus(); return; }
   // pick up a name typed but not yet added
@@ -347,11 +482,11 @@ $('splitForm').addEventListener('submit', async (e) => {
   if(editingSplitId){
     const s = getSplit(editingSplitId);
     Object.assign(s, {
-      name, type: $('splitType').value, currency: $('splitCurrency').value,
+      name, type: $('splitType').value,
       location: $('splitLocation').value.trim(), geo: draftGeo
     });
     touch(s);
-    await push(() => Cloud.saveSplitMeta(s), s.id);
+    await push({ type: 'saveSplitMeta', splitId: s.id });
     toast('Details saved');
     location.hash = `#/split/${encodeURIComponent(s.id)}`;
     return;
@@ -362,27 +497,26 @@ $('splitForm').addEventListener('submit', async (e) => {
     id: newId('s'),
     name,
     type: $('splitType').value,
-    currency: $('splitCurrency').value,
+    currency: DEFAULT_CURRENCY,
     location: $('splitLocation').value.trim(),
     geo: draftGeo,
     members: draftMembers.slice(),
     payModes: DEFAULT_PAY_MODES.slice(),
     entries: [],
-    createdBy: user.name,
+    createdBy: me(),
     createdAt: now,
     updatedAt: now,
-    updatedBy: user.name
+    updatedBy: me()
   };
-  if(CLOUD){
-    const btn = $('splitSubmitBtn');
-    btn.disabled = true;
-    try{ splits[s.id] = await Cloud.createSplit(s); }
-    catch(err){ toast(err.message); return; }
-    finally{ btn.disabled = false; }
-  } else {
-    splits[s.id] = s;
-    persistSplits();
-  }
+  if(!localMode()) Object.assign(s, { cloud: true, role: 'owner', collaborators: 1 });
+  splits[s.id] = s;
+  const btn = $('splitSubmitBtn');
+  btn.disabled = true;
+  const ok = await push({ type: 'createSplit', splitId: s.id });
+  btn.disabled = false;
+  if(!ok){ delete splits[s.id]; return; }
+  // Pick up server-made fields (invite code) once it's really saved.
+  if(!localMode() && !outbox.length) refreshSplit(s.id);
   $('memberInput').value = '';
   toast('Split created');
   location.hash = `#/split/${encodeURIComponent(s.id)}`;
@@ -397,25 +531,31 @@ function setEditMode(on){
   editMode = on;
   $('view-split').classList.toggle('editing', on);
   $('modeBtn').textContent = on ? '✓ Done' : '✎ Edit';
+  $('modeBtn').classList.toggle('btn-done', on);
   $('entryEmpty').innerHTML = on
     ? 'No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.'
     : 'No entries yet. Tap <strong>✎ Edit</strong> to start adding expenses.';
 }
 $('modeBtn').onclick = () => {
   const toggle = on => { setEditMode(on); if(cur()) renderMembers(); };
-  if(editMode){ toggle(false); return; }
-  requireLogin(() => toggle(true));
+  toggle(!editMode);
 };
 
 function renderSplitDetail(id, keepScroll){
   // Back to view mode when opening another split or arriving from outside it
   // (returning from "Details" keeps you editing).
-  if(id !== currentSplitId || !['split', 'new'].includes(currentView)) setEditMode(false);
+  const opening = id !== currentSplitId || !['split', 'new'].includes(currentView);
+  if(opening) setEditMode(false);
   currentSplitId = id;
   const s = cur();
-  $('detailType').textContent = `${s.type} split`;
+  if(opening) loadAvatars(s);
   $('detailName').textContent = s.name;
-  const meta = [];
+  // Travel | 6 Oct 2026 | 4 people | 📍 Purulia, West Bengal
+  const meta = [
+    `<span class="meta-type">${escapeHtml(s.type)}</span>`,
+    `<span>${formatDay(s.createdAt)}</span>`,
+    `<span>${s.members.length} ${s.members.length === 1 ? 'person' : 'people'}</span>`
+  ];
   if(s.location){
     meta.push(s.geo
       ? `<a href="${mapUrl(s.geo)}" target="_blank" rel="noopener">📍 ${escapeHtml(s.location)}</a>`
@@ -423,11 +563,8 @@ function renderSplitDetail(id, keepScroll){
   } else if(s.geo){
     meta.push(`<a href="${mapUrl(s.geo)}" target="_blank" rel="noopener">📍 ${s.geo.lat.toFixed(4)}, ${s.geo.lng.toFixed(4)}</a>`);
   }
-  meta.push(`<span>👥 ${s.members.length} people</span>`);
-  if(CLOUD && s.collaborators > 1) meta.push(`<span>🔗 Shared with ${s.collaborators - 1} other${s.collaborators > 2 ? 's' : ''}</span>`);
-  meta.push(`<span>Created by ${escapeHtml(s.createdBy || '—')} · ${formatDay(s.createdAt)}</span>`);
-  $('liveDot').hidden = !(CLOUD && liveStatus === 'SUBSCRIBED');
-  $('deleteSplitBtn').textContent = CLOUD && s.role !== 'owner' ? 'Leave split' : 'Delete split';
+  if(CLOUD && s.collaborators > 1) meta.push(`<span>🔗 Shared with ${s.collaborators - 1}</span>`);
+  meta.push(`<span class="live-dot" id="liveDot" title="Live — updates from your group appear instantly" ${CLOUD && liveStatus === 'SUBSCRIBED' ? '' : 'hidden'}>● LIVE</span>`);
   $('detailMeta').innerHTML = meta.join('');
   renderMembers();
   renderEntries();
@@ -439,13 +576,61 @@ function renderSplitDetail(id, keepScroll){
 function renderMembers(){
   const s = cur();
   $('detailMembers').innerHTML = s.members.map(m => `
-    <div class="chip">
-      <span class="avatar-dot"></span>
-      <button type="button" class="chip-name" data-rename="${escapeHtml(m)}" title="Rename">${escapeHtml(m)}</button>
-      ${user && m === user.name ? '<span class="you">YOU</span>' : ''}
+    <div class="chip person-chip" data-tip="${escapeHtml(m)}" title="${escapeHtml(m)}">
+      ${personAvatar(m)}
+      <button type="button" class="chip-name" data-rename="${escapeHtml(m)}">${escapeHtml(m)}</button>
+      ${m === me() ? '<span class="you">YOU</span>' : ''}
       <button type="button" class="chip-x edit-only" data-remove="${escapeHtml(m)}" title="Remove">×</button>
     </div>`).join('') || `<span class="hint">No one yet${editMode ? ' — add people below' : ''}.</span>`;
 }
+
+// Phones, view mode: 👁 shows everyone's name under their photo.
+$('peopleToggle').onclick = function(){
+  const open = this.closest('.people-card').classList.toggle('names-open');
+  this.setAttribute('aria-pressed', open);
+  this.title = open ? 'Hide names' : 'Show names';
+  hideTips();
+};
+
+/* --- profile photos --- */
+let splitAvatars = {};   // lower-cased name -> photo URL, for the open split
+
+async function loadAvatars(s){
+  splitAvatars = {};
+  if(!CLOUD || !user) return;
+  try{ splitAvatars = await Cloud.splitAvatars(s); }
+  catch(_){ return; }   // photos are a nice-to-have
+  if(currentSplitId === s.id && currentView === 'split'){ renderMembers(); renderEntries(); }
+}
+
+function avatarUrlFor(name){
+  if(user && user.avatar && name === user.name) return user.avatar;
+  return splitAvatars[name.toLowerCase()] || '';
+}
+
+// Photo if we have one, otherwise the first letter on a colour picked from the name.
+// The letter sits underneath, so a photo that fails to load falls back to it.
+function personAvatar(name){
+  const url = avatarUrlFor(name);
+  let hash = 0;
+  for(const ch of name) hash = (hash * 31 + ch.codePointAt(0)) % 360;
+  return `<span class="p-avatar" style="--hue:${hash}">${escapeHtml(name.trim().charAt(0).toUpperCase())}${url
+    ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+}
+
+// Phones show photos only (in view mode); tap one to see the name.
+let tipTimer;
+function hideTips(){ document.querySelectorAll('.person-chip.tip').forEach(c => c.classList.remove('tip')); }
+document.addEventListener('click', e => {
+  const chip = !editMode && !document.querySelector('.people-card.names-open') && e.target.closest('#detailMembers .person-chip');
+  const wasOpen = chip && chip.classList.contains('tip');
+  hideTips();
+  clearTimeout(tipTimer);
+  if(chip && !wasOpen){
+    chip.classList.add('tip');
+    tipTimer = setTimeout(hideTips, 2500);
+  }
+});
 
 function addMember(split, rawName){
   const name = cleanName(rawName);
@@ -461,9 +646,9 @@ function addMember(split, rawName){
 async function ensurePeople(s, names){
   const fresh = names.map(cleanName).filter(n => n && !hasName(s.members, n));
   dedupe(fresh).forEach(n => addMember(s, n));
-  if(!CLOUD){ if(fresh.length) persistSplits(); return true; }
+  if(localMode()){ if(fresh.length) persistSplits(); return true; }
   for(const n of dedupe(fresh)){
-    if(!await push(() => Cloud.addPerson(s, n), s.id)) return false;
+    if(!await push({ type: 'addPerson', splitId: s.id, name: n })) return false;
   }
   return true;
 }
@@ -509,7 +694,7 @@ async function renameMember(s, oldName){
   });
   touch(s);
   renderSplitDetail(s.id, true);
-  if(await push(() => Cloud.renamePerson(s, oldName, target), s.id)) toast(`Renamed to ${target} everywhere`);
+  if(await push({ type: 'renamePerson', splitId: s.id, from: oldName, to: target })) toast(`Renamed to ${target} everywhere`);
 }
 
 async function removeMember(s, name){
@@ -530,7 +715,7 @@ async function removeMember(s, name){
   });
   touch(s);
   renderSplitDetail(s.id, true);
-  await push(() => Cloud.removePerson(s, name), s.id);
+  await push({ type: 'removePerson', splitId: s.id, name });
 }
 
 /* --- entries table --- */
@@ -560,19 +745,18 @@ function renderEntries(){
     const signCls = e.sign < 0 ? 'minus' : 'plus';
     const [d, t] = formatDateTime(e.datetime);
     const onBehalf = e.addedBy && e.addedBy !== e.paidBy;
-    const loc = e.location
-      ? (e.geo ? `<a href="${mapUrl(e.geo)}" target="_blank" rel="noopener" data-stop>${escapeHtml(e.location)}</a>` : escapeHtml(e.location))
-      : (e.geo ? `<a href="${mapUrl(e.geo)}" target="_blank" rel="noopener" data-stop>📍 map</a>` : '');
     return `<tr class="row-${signCls}" data-id="${e.id}">
       <td class="cell-date c-date" data-label="Date">${d}<small>${t}</small></td>
       <td class="num c-amount" data-label="Amount"><span class="amt ${signCls}">${e.sign < 0 ? '−' : '+'}${c}${formatNum(e.amount)}</span></td>
-      <td class="c-purpose" data-label="Purpose">${escapeHtml(e.purpose)}</td>
+      <td class="c-purpose" data-label="Purpose"><span class="purpose-wrap" data-full="${escapeHtml(e.purpose)}">${personAvatar(e.paidBy)}<span class="purpose-text" title="${escapeHtml(e.purpose)}">${escapeHtml(e.purpose)}</span></span></td>
       <td class="c-via ${e.payVia ? '' : 'c-empty'}" data-label="Via">${escapeHtml(e.payVia || '—')}</td>
       <td class="c-by" data-label="Paid by">${escapeHtml(e.paidBy)}${onBehalf ? `<span class="sub">added by ${escapeHtml(e.addedBy)}</span>` : ''}</td>
-      <td class="cell-loc c-loc ${loc ? '' : 'c-empty'}" data-label="Location">${loc || '—'}</td>
       <td class="cell-note c-note ${e.note ? '' : 'c-empty'}" data-label="Note">${escapeHtml(e.note || '—')}</td>
-      <td class="c-split" data-label="Split">${everyone ? 'Everyone' : `${e.splitAmong.length} of ${s.members.length}`}
-        ${everyone ? '' : `<span class="excl-note">excl. ${excluded.map(escapeHtml).join(', ')}</span>`}</td>
+      <td class="c-split" data-label="Split">${everyone ? '<span class="split-all">Everyone</span>' : `${e.splitAmong.length} of ${s.members.length}`}
+        ${everyone ? '' : `<span class="excl-note">excl. <span class="excl-names">${excluded.map(escapeHtml).join(', ')}</span></span>`}</td>
+      <td class="c-m c-meta">${[escapeHtml(e.paidBy), e.payVia && escapeHtml(e.payVia), shortWhen(e.datetime) && `<span class="m-when">${shortWhen(e.datetime)}</span>`]
+        .filter(Boolean).map(x => x.startsWith('<span') ? x : `<span>${x}</span>`).join('')}</td>
+      <td class="c-m c-noteicon">${e.note ? `<button type="button" class="note-btn" data-stop data-note="${escapeHtml(e.note)}" aria-label="Show note">📝</button>` : ''}</td>
       <td class="cell-actions edit-only">
         <button class="btn-icon" title="Edit" data-edit="${e.id}">✏️</button>
         <button class="btn-icon" title="Delete" data-delete="${e.id}">🗑️</button>
@@ -581,19 +765,41 @@ function renderEntries(){
   }).join('');
 }
 
+// "06 Oct · 10:15 pm" (year only when it isn't this year) for the compact phone cards.
+function shortWhen(local){
+  const d = new Date(local);
+  if(!local || isNaN(d)) return '';
+  const opts = { day: '2-digit', month: 'short' };
+  if(d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return `${d.toLocaleDateString('en-IN', opts)} · ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+}
+
+// Tap the 📝 on an entry to see its note; tap a cut-off purpose ("…") to see all of it.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('.note-btn');
+  let wrap = !btn && !editMode && e.target.closest('#entryBody .purpose-wrap');
+  if(wrap){
+    const text = wrap.querySelector('.purpose-text');
+    if(text.scrollWidth <= text.clientWidth) wrap = null;   // already fully visible
+  }
+  const target = btn || wrap;
+  document.querySelectorAll('.note-btn.open, .purpose-wrap.open').forEach(b => { if(b !== target) b.classList.remove('open'); });
+  if(target) target.classList.toggle('open');
+});
+
 $('entryBody').addEventListener('click', (e) => {
   if(e.target.closest('[data-stop]') || !editMode) return;
   const del = e.target.closest('[data-delete]');
   if(del){ deleteEntry(del.dataset.delete); return; }
   const row = e.target.closest('tr[data-id]');
-  if(row) requireLogin(() => openEntrySheet(row.dataset.id));
+  if(row) openEntrySheet(row.dataset.id);
 });
 
 async function deleteEntry(id){
   const s = cur();
   const en = s.entries.find(x => x.id === id);
   if(!en || !confirm(`Delete "${en.purpose}"?`)) return;
-  if(CLOUD){
+  if(!localMode()){
     s.entries = s.entries.filter(x => x.id !== id);
   } else {
     en.deleted = true;            // tombstone so the deletion syncs via share links
@@ -601,15 +807,14 @@ async function deleteEntry(id){
   }
   closeSheet('entrySheet');
   renderSplitDetail(s.id, true);
-  if(await push(() => Cloud.deleteEntry(en), s.id)) toast('Entry deleted');
+  if(await push({ type: 'deleteEntry', splitId: s.id, entryId: id })) toast('Entry deleted');
 }
 
 /* ---------------- ENTRY SHEET ---------------- */
 let editingEntryId = null;
 let entrySign = -1;
-let entryGeo = null;
 
-$('addEntryBtn').onclick = () => requireLogin(() => openEntrySheet(null));
+$('addEntryBtn').onclick = () => openEntrySheet(null);
 
 function openEntrySheet(entryId){
   const s = cur();
@@ -624,21 +829,18 @@ function openEntrySheet(entryId){
   $('eAmount').value = en ? en.amount : '';
   setSign(en ? en.sign : -1);
   $('ePurpose').value = en ? en.purpose : '';
-  $('eLocation').value = en ? (en.location || '') : (lastEntryLocation(s) || '');
   $('eNote').value = en ? (en.note || '') : '';
-  entryGeo = en ? (en.geo || null) : null;
-  renderGeoInfo('eGeoInfo', entryGeo);
 
   // Paid by defaults to the logged-in user (who may be new to a shared split)
-  fillPaidBy(en ? en.paidBy : user.name);
+  fillPaidBy(en ? en.paidBy : me());
   fillPayVia(en ? en.payVia : (lastPayVia(s) || s.payModes[0]));
-  renderSplitPills(en ? en.splitAmong : s.members.concat(hasName(s.members, user.name) ? [] : [user.name]));
+  renderSplitPills(en ? en.splitAmong : s.members.concat(hasName(s.members, me()) ? [] : [me()]));
   $('purposeList').innerHTML = dedupe(liveEntries(s).map(x => x.purpose)).map(p => `<option value="${escapeHtml(p)}">`).join('');
 
   $('eAddedBy').innerHTML = en
     ? `Added by <strong>${escapeHtml(en.addedBy || '—')}</strong> · ${formatStamp(en.createdAt)}` +
       (en.updatedBy && en.updatedAt !== en.createdAt ? ` &nbsp;·&nbsp; last edited by <strong>${escapeHtml(en.updatedBy)}</strong> · ${formatStamp(en.updatedAt)}` : '')
-    : `Will be added by <strong>${escapeHtml(user.name)}</strong>. Paying on behalf of someone? Just change <em>Paid by</em>.`;
+    : `Will be added by <strong>${escapeHtml(me())}</strong>. Paying on behalf of someone? Just change <em>Paid by</em>.`;
 
   openSheet('entrySheet');
   if(!en) setTimeout(() => $('eAmount').focus(), 60);
@@ -660,9 +862,9 @@ $('eSign').onclick = () => setSign(-entrySign);
 function fillPaidBy(selected){
   const s = cur();
   const names = s.members.slice();
-  if(user && !hasName(names, user.name)) names.push(user.name);
+  if(!hasName(names, me())) names.push(me());
   if(selected && !names.includes(selected)) names.push(selected);
-  fillSelect($('ePaidBy'), names, selected, '＋ Add new person…', n => user && n === user.name ? `${n} (you)` : n);
+  fillSelect($('ePaidBy'), names, selected, '＋ Add new person…', n => n === me() ? `${n} (you)` : n);
 }
 
 function fillPayVia(selected){
@@ -700,7 +902,7 @@ $('ePayVia').addEventListener('change', function(){
   const s = cur();
   const existing = s.payModes.find(m => m.toLowerCase() === mode.toLowerCase());
   fillPayVia(existing || mode);
-  if(!existing){ s.payModes.push(mode); touch(s); push(() => Cloud.saveSplitMeta(s), s.id); }
+  if(!existing){ s.payModes.push(mode); touch(s); push({ type: 'saveSplitMeta', splitId: s.id }); }
 });
 
 function renderSplitPills(selected){
@@ -735,7 +937,6 @@ function setAllPills(on){
 $('eSplitAll').onclick = () => setAllPills(true);
 $('eSplitNone').onclick = () => setAllPills(false);
 
-$('eGeoBtn').onclick = () => captureGeo($('eGeoBtn'), $('eLocation'), 'eGeoInfo', g => { entryGeo = g; });
 $('eDeleteBtn').onclick = () => deleteEntry(editingEntryId);
 
 $('entryForm').addEventListener('submit', async (e) => {
@@ -769,8 +970,8 @@ async function saveEntryFromForm(s, { paidBy, payVia, purpose, amount, splitAmon
     amount: round2(amount),
     sign: entrySign,
     purpose, payVia, paidBy,
-    location: $('eLocation').value.trim(),
-    geo: entryGeo,
+    location: '',   // entries don't keep a location (the split has one)
+    geo: null,
     note: $('eNote').value.trim(),
     splitAmong
   };
@@ -781,19 +982,18 @@ async function saveEntryFromForm(s, { paidBy, payVia, purpose, amount, splitAmon
     touch(en);
   } else {
     const now = Date.now();
-    en = { id: newId('e'), ...data, addedBy: user.name, createdAt: now, updatedAt: now, updatedBy: user.name };
+    en = { id: newId('e'), ...data, addedBy: me(), createdAt: now, updatedAt: now, updatedBy: me() };
     s.entries.push(en);
   }
   touch(s);
   const isEdit = !!editingEntryId;
   closeSheet('entrySheet');
   renderSplitDetail(s.id, true);
-  if(await push(() => Cloud.saveEntry(s, en), s.id)) toast(isEdit ? 'Entry updated' : 'Entry added');
+  if(await push({ type: 'saveEntry', splitId: s.id, entryId: en.id })) toast(isEdit ? 'Entry updated' : 'Entry added');
 }
 
 function lastEntry(s){ return sortedEntries(s).slice(-1)[0]; }
 function lastPayVia(s){ const l = lastEntry(s); return l && l.payVia; }
-function lastEntryLocation(s){ const l = lastEntry(s); return l && l.location; }
 
 /* ---------------- SETTLEMENT ---------------- */
 function computeBalances(s){
@@ -821,7 +1021,8 @@ function computeBalances(s){
   let ci = 0, di = 0;
   while(ci < creditors.length && di < debtors.length){
     const c = creditors[ci], d = debtors[di];
-    const amt = Math.min(c.amt, d.amt);
+    // Per-person rounding can leave a paisa of drift; settle what the debtor actually owes.
+    const amt = Math.abs(c.amt - d.amt) <= 0.02 ? d.amt : Math.min(c.amt, d.amt);
     if(amt > 0.005) transactions.push({ from: d.name, to: c.name, amount: round2(amt) });
     c.amt = round2(c.amt - amt);
     d.amt = round2(d.amt - amt);
@@ -848,11 +1049,16 @@ function renderSettlement(){
   $('shareList').innerHTML = people.length ? people.map(p => {
     const b = balance[p];
     const cls = b > 0.005 ? 'bal-pos' : (b < -0.005 ? 'bal-neg' : 'bal-zero');
-    const label = b > 0.005 ? `gets back ${c}${formatNum(b)}` : (b < -0.005 ? `owes ${c}${formatNum(-b)}` : 'settled');
+    const label = b > 0.005 ? 'gets back' : (b < -0.005 ? 'owes' : '');
+    // Name over "paid · share" on the left; label over amount on the right.
     return `<div class="person-row">
-      <span class="person-name">${escapeHtml(p)}
-        <span class="person-sub">${personSummary(entries, p, c)} · share ${c}${formatNum(share[p])}</span></span>
-      <span class="${cls}">${label}</span>
+      <div class="person-left">
+        <span class="person-name">${escapeHtml(p)}${user && p === me() ? ' <span class="you">YOU</span>' : ''}</span>
+        <span class="person-sub">${personSummary(entries, p, c)} · share ${c}${formatNum(share[p])}</span>
+      </div>
+      <div class="person-bal ${cls}">${label
+        ? `<small>${label}</small><b>${c}${formatNum(Math.abs(b))}</b>`
+        : '<b>✓ settled</b>'}</div>
     </div>`;
   }).join('') : '<div class="settle-empty">Add people and entries to see balances.</div>';
 
@@ -871,47 +1077,63 @@ function personSummary(entries, p, c){
   return parts.join(' · ');
 }
 
-$('snapshotBtn').onclick = function(){
-  if(typeof html2canvas === 'undefined'){ toast('Snapshot needs an internet connection'); return; }
-  const s = cur();
-  const btn = this, orig = btn.textContent;
-  btn.textContent = 'Preparing…'; btn.disabled = true;
-  html2canvas($('downloadArea'), { backgroundColor: '#F4EFE1', scale: 2 }).then(canvas => {
-    const link = document.createElement('a');
-    link.download = `${slug(s.name)}-settle-up.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
-  }).catch(err => alert('Could not generate snapshot: ' + err.message))
-    .finally(() => { btn.textContent = orig; btn.disabled = false; });
-};
 
 $('editDetailsBtn').onclick = () => { location.hash = `#/edit/${encodeURIComponent(currentSplitId)}`; };
 
-$('deleteSplitBtn').onclick = async () => {
-  const s = cur();
-  const leaving = CLOUD && s.role !== 'owner';
-  const msg = leaving
-    ? `Leave "${s.name}"? You'll lose access until someone shares it with you again.`
-    : CLOUD
-      ? `Delete "${s.name}" and all its entries for everyone it's shared with? This can't be undone.`
-      : `Delete "${s.name}" and all its entries from this device? This can't be undone.`;
-  if(!confirm(msg)) return;
-  if(CLOUD){
-    try{ await (leaving ? Cloud.leaveSplit(s) : Cloud.deleteSplit(s)); }
-    catch(err){ toast(err.message); return; }
-  }
+/* --- delete / leave (from the splits list) --- */
+async function deleteSplitAsk(id){
+  const s = getSplit(id);
+  if(!s) return;
+  const leaving = !localMode() && s.role !== 'owner';
+  const ok = await confirmDialog({
+    icon: leaving ? '🚪' : '🗑️',
+    title: leaving ? 'Leave this split?' : 'Delete this split?',
+    message: leaving
+      ? `You'll lose access to <strong>${escapeHtml(s.name)}</strong> until someone shares it with you again.`
+      : `<strong>${escapeHtml(s.name)}</strong>${(n => n ? ` and its ${n} entr${n === 1 ? 'y' : 'ies'}` : '')(liveEntries(s).length)} will be deleted${!localMode() && s.collaborators > 1 ? ' for <strong>everyone</strong> it’s shared with' : ''}. This can’t be undone.`,
+    confirmLabel: leaving ? 'Leave split' : 'Delete split'
+  });
+  if(!ok) return;
+  if(!localMode() && !await push({ type: leaving ? 'leaveSplit' : 'deleteSplit', splitId: s.id })) return;
   delete splits[s.id];
+  setFavourite(s.id, false);
   persistSplits();
   toast(leaving ? 'You left the split' : 'Split deleted');
-  location.hash = '#/splits';
-};
+  rerender();
+}
+
+// Promise-based confirm popup: resolves true on confirm, false on cancel / close.
+let confirmResolve = null;
+function confirmDialog({ icon, title, message, confirmLabel }){
+  if(confirmResolve) confirmResolve(false);
+  $('confirmIcon').textContent = icon || '⚠️';
+  $('confirmTitle').textContent = title;
+  $('confirmMessage').innerHTML = message;
+  $('confirmOkBtn').textContent = confirmLabel || 'Confirm';
+  openSheet('confirmSheet');
+  setTimeout(() => $('confirmCancelBtn').focus(), 50);
+  return new Promise(resolve => { confirmResolve = resolve; });
+}
+function settleConfirm(result){
+  const r = confirmResolve;
+  confirmResolve = null;
+  if(!$('confirmSheet').hidden) closeSheet('confirmSheet');
+  if(r) r(result);
+}
+$('confirmOkBtn').onclick = () => settleConfirm(true);
+$('confirmCancelBtn').onclick = () => settleConfirm(false);
 
 /* ---------------- SHARE / IMPORT ---------------- */
 // No server: the whole split travels inside the link. Whoever opens it gets a
 // copy; when they share back, entries are merged by id (newest edit wins).
 $('shareBtn').onclick = async () => {
   const s = cur();
-  if(CLOUD){ openShareSheet(s); return; }
+  if(CLOUD && !user){ toast('Log in to share — this split comes with you'); openLogin(); return; }
+  if(CLOUD){
+    if(!s.shareCode){ toast('Connect to the internet to share this split'); return; }
+    openShareSheet(s);
+    return;
+  }
   const url = `${location.origin}${location.pathname}#/import/${await encodeSplit(s)}`;
   const text = `Join "${s.name}" on SplitEasy — add your expenses and share the link back so I can merge them:`;
   if(navigator.share){
@@ -1062,7 +1284,7 @@ document.addEventListener('click', e => {
   const a = e.target.closest('[data-clear-geo]');
   if(!a) return;
   e.preventDefault();
-  if(a.dataset.clearGeo === 'splitGeoInfo') draftGeo = null; else entryGeo = null;
+  draftGeo = null;
   renderGeoInfo(a.dataset.clearGeo, null);
 });
 
@@ -1202,28 +1424,77 @@ function renderJoin(code){
   if(user && !cloudLoading) join();
 }
 
-/* ---------------- CLOUD: DEVICE SPLITS → ACCOUNT ---------------- */
-function renderUploadBanner(){
-  const banner = $('uploadBanner');
-  const local = CLOUD && user ? Object.values(load(SPLITS_KEY, {})) : [];
-  banner.hidden = local.length === 0;
-  if(!local.length) return;
-  banner.innerHTML = `<span>📲 ${local.length} split${local.length > 1 ? 's are' : ' is'} saved only on this device. Move ${local.length > 1 ? 'them' : 'it'} to your account to share and sync.</span>
-    <button class="btn-small" id="uploadBtn">Move to my account</button>`;
-  $('uploadBtn').onclick = async function(){
-    this.disabled = true; this.textContent = 'Uploading…';
-    const remaining = load(SPLITS_KEY, {});
-    for(const ls of Object.values(remaining)){
-      try{
-        const saved = await Cloud.uploadSplit(ls);
-        splits[saved.id] = saved;
-        delete remaining[ls.id];
-        save(SPLITS_KEY, remaining);
-      } catch(err){ toast(`Couldn't upload "${ls.name}": ${err.message}`); break; }
+/* ---------------- SYNC: DEVICE ⇄ ACCOUNT ---------------- */
+const idRemap = {};   // guest split id -> id it got in your account
+
+// Splits made before logging in move into your account automatically.
+async function uploadGuestSplits(){
+  const local = await Store.get(SPLITS_KEY, {});
+  const list = Object.values(local);
+  if(!list.length) return;
+  let moved = 0;
+  for(const ls of list){
+    try{
+      const saved = await Cloud.uploadSplit(adoptGuestSplit(ls, user.name));
+      idRemap[ls.id] = saved.id;
+      if(isFavourite(ls.id)){ setFavourite(ls.id, false); setFavourite(saved.id, true); }
+      delete local[ls.id];
+      moved++;
+      await Store.set(SPLITS_KEY, local);
+    } catch(err){
+      if(isNetworkError(err)) throw err;
+      toast(`Couldn’t save "${ls.name}" to your account: ${err.message}`);
+      break;
     }
-    if(!Object.keys(remaining).length) localStorage.removeItem(SPLITS_KEY);
-    renderSplitList();
-  };
+  }
+  if(!Object.keys(local).length) await Store.del(SPLITS_KEY);
+  if(moved) toast(`${moved} split${moved > 1 ? 's' : ''} from this device saved to your account`);
+}
+
+// Send queued changes, move guest splits up, then pull the latest of everything.
+async function syncWithServer(firstLoad){
+  if(!CLOUD || !user || syncing) return;
+  syncing = true;
+  renderStatusBar();
+  try{
+    await flushOutbox();
+    if(firstLoad){
+      try{
+        const joined = await Cloud.acceptInvites();
+        if(joined) toast(`You were added to ${joined} shared split${joined > 1 ? 's' : ''}`);
+      } catch(err){ if(isNetworkError(err)) throw err; }
+    }
+    await uploadGuestSplits();
+    splits = await Cloud.loadAll();
+    persistSplits();
+  } catch(err){
+    if(!isNetworkError(err)) toast('Could not load your splits: ' + err.message);
+    else if(!IS_PWA) toast('You’re offline — connect to the internet to load your splits');
+  } finally {
+    syncing = false;
+    cloudLoading = false;
+    renderStatusBar();
+  }
+}
+
+/* --- header notice --- */
+function renderStatusBar(){
+  const bar = $('statusBar');
+  let html = '', cls = 'statusbar';
+  if(CLOUD && !user && authReady){
+    html = `<span class="sb-long">💾 Saved on this device only — <strong>log in to save your data and sync</strong> it everywhere.</span>
+      <span class="sb-short">💾 Saved on this device — <strong>log in to sync</strong></span>`;
+  } else if(CLOUD && user && IS_PWA && (!navigator.onLine || outbox.length)){
+    const n = outbox.length;
+    const changes = `${n} change${n > 1 ? 's' : ''}`;
+    cls += ' statusbar-offline';
+    html = navigator.onLine
+      ? `<span>🔄 Syncing ${changes}…</span>`
+      : `<span>📴 Offline — showing your saved splits.${n ? ` ${changes} will sync when you’re back online.` : ''}</span>`;
+  }
+  bar.className = cls;
+  bar.hidden = !html;
+  bar.innerHTML = html;
 }
 
 /* ---------------- CLOUD: REALTIME ---------------- */
@@ -1231,8 +1502,12 @@ let liveStatus = '';
 
 // Re-draw whatever is on screen after data changed underneath it.
 function rerender(splitId){
+  if(!localMode()) persistSplits();   // keep the offline copy current
   if(currentView === 'split'){
-    if(!getSplit(currentSplitId)){ toast('This split was deleted or you no longer have access'); location.hash = '#/splits'; return; }
+    if(!getSplit(currentSplitId)){
+      if(idRemap[currentSplitId]){ location.replace(`#/split/${encodeURIComponent(idRemap[currentSplitId])}`); return; }
+      toast('This split was deleted or you no longer have access'); location.hash = '#/splits'; return;
+    }
     if(!splitId || splitId === currentSplitId) renderSplitDetail(currentSplitId, true);
   } else if(currentView === 'splits'){
     renderSplitList(true);
@@ -1277,26 +1552,35 @@ const liveHandlers = {
   },
   status(st){
     liveStatus = st;
-    if(currentView === 'split') $('liveDot').hidden = st !== 'SUBSCRIBED';
+    if(currentView === 'split' && $('liveDot')) $('liveDot').hidden = st !== 'SUBSCRIBED';
   }
 };
 
 /* ---------------- INIT ---------------- */
 let signedInAs = null;
+let resumedOffline = false;
 
 async function onSignedIn(session){
-  if(signedInAs === session.user.id) return;
+  if(signedInAs === session.user.id){
+    // Back online after an offline start: the session is valid again.
+    if(resumedOffline){ resumedOffline = false; Cloud.subscribe(liveHandlers); await syncWithServer(false); rerender(); }
+    return;
+  }
   signedInAs = session.user.id;
+  authReady = true;
   cloudLoading = true;
   user = await Cloud.profileFor(session);
+  splits = {};   // device-only splits are uploaded by syncWithServer, not shown as account data
   renderAuth();
-  try{
-    const joined = await Cloud.acceptInvites();
-    if(joined) toast(`You were added to ${joined} shared split${joined > 1 ? 's' : ''}`);
-  } catch(_){ /* invites are best-effort */ }
-  try{ splits = await Cloud.loadAll(); }
-  catch(err){ toast('Could not load your splits: ' + err.message); }
-  cloudLoading = false;
+  if(IS_PWA){
+    // Installed app: show the offline copy straight away, then refresh it.
+    Store.set('last_user', user).catch(() => {});
+    outbox = await Store.get(outboxKey(), []);
+    const cached = await Store.get(cacheKey(), null);
+    if(cached){ splits = cached; cloudLoading = false; route(); }
+  }
+  renderStatusBar();
+  await syncWithServer(true);
   Cloud.subscribe(liveHandlers);
   const back = takeReturn();
   if(!$('loginSheet').hidden) finishLogin();
@@ -1304,12 +1588,37 @@ async function onSignedIn(session){
   else route();
 }
 
-function onSignedOut(){
-  signedInAs = null;
-  user = null;
-  splits = {};
+// Installed app opened offline after the login token expired: Supabase can't
+// refresh it, so it reports no session. Carry on with the offline copy; the
+// session refreshes by itself once we're back online and catchUp() syncs.
+async function resumeOffline(){
+  if(!IS_PWA || navigator.onLine) return false;
+  const last = await Store.get('last_user', null);
+  const hasSession = Object.keys(localStorage).some(k => /^sb-.*-auth-token$/.test(k));
+  if(!last || !hasSession) return false;
+  signedInAs = last.id;
+  resumedOffline = true;
+  authReady = true;
+  user = last;
+  Cloud.userId = last.id;
+  outbox = await Store.get(outboxKey(), []);
+  splits = await Store.get(cacheKey(), {});
   cloudLoading = false;
   renderAuth();
+  renderStatusBar();
+  route();
+  return true;
+}
+
+async function onSignedOut(){
+  signedInAs = null;
+  authReady = true;
+  user = null;
+  outbox = [];
+  splits = await Store.get(SPLITS_KEY, {});
+  cloudLoading = false;
+  renderAuth();
+  renderStatusBar();
   route();
 }
 
@@ -1317,22 +1626,28 @@ async function init(){
   if(window.Cloud && Cloud.configured && !Cloud.enabled){
     toast('Could not reach the sync service — running offline');
   }
+  renderAuth();
+  route();   // "Loading…" until we know who you are
+  await Store.adopt(SPLITS_KEY);
   if(!CLOUD){
-    renderAuth();
+    splits = await Store.get(SPLITS_KEY, {});
+    cloudLoading = false;
     route();
     return;
   }
-  renderAuth();
-  route();
-  Cloud.onAuthChange((event, session) => {
+  Cloud.onAuthChange(async (event, session) => {
     if(session) onSignedIn(session);
+    else if(event === 'INITIAL_SESSION' && await resumeOffline()) return;
     else if(event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') onSignedOut();
   });
-  // Reload when coming back to the tab, in case realtime missed something while asleep.
-  document.addEventListener('visibilitychange', async () => {
-    if(document.visibilityState !== 'visible' || !user || cloudLoading) return;
-    try{ splits = await Cloud.loadAll(); rerender(); } catch(_){}
-  });
+  // Catch up when coming back to the app or getting a connection back.
+  const catchUp = async () => {
+    if(!user || cloudLoading) return;
+    await syncWithServer(false);
+    rerender();
+  };
+  document.addEventListener('visibilitychange', () => { if(document.visibilityState === 'visible') catchUp(); });
+  window.addEventListener('online', () => { renderStatusBar(); catchUp(); });
+  window.addEventListener('offline', renderStatusBar);
 }
 init();
-

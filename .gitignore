@@ -1,0 +1,7 @@
+# Secrets — never commit (the Google client secret belongs in the Supabase dashboard only)
+.env
+.env.*
+
+node_modules/
+.DS_Store
+Thumbs.db

@@ -16,6 +16,8 @@ create table if not exists public.profiles (
   email        text,
   created_at   timestamptz not null default now()
 );
+-- Profile photo (from Google sign-in), shown next to the person's name in shared splits.
+alter table public.profiles add column if not exists avatar_url text;
 
 -- A split = one trip / party / group. "members" are the people expenses are
 -- split between (plain names: they don't need an account).
@@ -103,7 +105,7 @@ $$;
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  insert into profiles (id, display_name, email)
+  insert into profiles (id, display_name, email, avatar_url)
   values (
     new.id,
     coalesce(
@@ -112,7 +114,8 @@ begin
       nullif(trim(new.raw_user_meta_data->>'name'), ''),
       split_part(new.email, '@', 1)
     ),
-    lower(new.email)
+    lower(new.email),
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture')
   )
   on conflict (id) do nothing;
   return new;

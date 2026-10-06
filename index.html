@@ -30,8 +30,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" defer></script>
 <link rel="stylesheet" href="style.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script src="store.js"></script>
 <script src="config.js"></script>
 <script src="cloud.js"></script>
+<script src="places.js"></script>
 <script>
 if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => {
@@ -45,6 +47,7 @@ if ("serviceWorker" in navigator) {
 <!-- ============ HEADER ============ -->
 <header class="topbar">
   <div class="topbar-inner">
+    <a href="#/" class="top-back" id="topBack" aria-label="Back" hidden>←</a>
     <a href="#/" class="brand" aria-label="SplitEasy home">
       <span class="brand-mark">💸</span>
       <span class="brand-name">SplitEasy</span>
@@ -54,6 +57,7 @@ if ("serviceWorker" in navigator) {
       <div id="authArea"></div>
     </div>
   </div>
+  <div class="statusbar" id="statusBar" role="status" hidden></div>
 </header>
 
 <main class="wrap" id="app">
@@ -63,7 +67,6 @@ if ("serviceWorker" in navigator) {
     <div class="hero">
       <div class="eyebrow">✈︎ • TRAVEL • PARTY • SPLIT • REPEAT • ✈︎</div>
       <h1 class="title" id="homeGreeting">Split every bill, fairly.</h1>
-      <p class="subtitle">Trips, parties, flatmates — log who paid, who's in, and SplitEasy tells you who owes whom.</p>
     </div>
 
     <div class="home-cards">
@@ -84,18 +87,17 @@ if ("serviceWorker" in navigator) {
   <!-- ============ LIST ============ -->
   <section class="view" id="view-splits">
     <div class="view-head">
-      <a href="#/" class="back-link">← Home</a>
+      <span></span>
       <h2 class="view-title">Your splits</h2>
-      <a href="#/new" class="btn-primary btn-small btn-link">＋ New</a>
+      <span></span>
     </div>
-    <div class="banner" id="uploadBanner" hidden></div>
     <div class="split-list" id="splitList"></div>
   </section>
 
   <!-- ============ CREATE / EDIT DETAILS ============ -->
   <section class="view" id="view-new">
     <div class="view-head">
-      <a href="#/" class="back-link" id="newBackLink">← Home</a>
+      <span></span>
       <h2 class="view-title" id="newTitle">New split</h2>
       <span></span>
     </div>
@@ -109,11 +111,11 @@ if ("serviceWorker" in navigator) {
 
         <div class="form-grid">
           <div class="span-2">
-            <label class="field-label" for="splitName">Name</label>
+            <label class="field-label req" for="splitName">Name</label>
             <input type="text" id="splitName" placeholder="e.g. Goa trip 2026, Rohan's birthday" required maxlength="80">
           </div>
-          <div>
-            <label class="field-label" for="splitType">Purpose</label>
+          <div class="span-2">
+            <label class="field-label req" for="splitType">Purpose</label>
             <select id="splitType">
               <option>Travel</option>
               <option>Party</option>
@@ -123,19 +125,8 @@ if ("serviceWorker" in navigator) {
               <option>Other</option>
             </select>
           </div>
-          <div>
-            <label class="field-label" for="splitCurrency">Currency</label>
-            <select id="splitCurrency">
-              <option value="₹">₹ INR</option>
-              <option value="$">$ USD</option>
-              <option value="€">€ EUR</option>
-              <option value="£">£ GBP</option>
-              <option value="৳">৳ BDT</option>
-              <option value="AED ">AED</option>
-            </select>
-          </div>
           <div class="span-2">
-            <label class="field-label" for="splitLocation">Location</label>
+            <label class="field-label" for="splitLocation">Location <span class="opt">optional</span></label>
             <div class="input-with-btn">
               <input type="text" id="splitLocation" placeholder="e.g. Darjeeling, West Bengal" maxlength="120">
               <button type="button" class="btn-ghost geo-btn" id="splitGeoBtn" title="Use my current location">📍 Locate</button>
@@ -166,28 +157,27 @@ if ("serviceWorker" in navigator) {
 
   <!-- ============ SPLIT DETAIL ============ -->
   <section class="view" id="view-split">
-    <div class="view-head">
-      <a href="#/splits" class="back-link">← All splits</a>
-      <span></span>
-      <div class="head-actions">
-        <button class="btn-ghost-light btn-small" id="shareBtn">↗ Share</button>
-        <button class="btn-ghost-light btn-small edit-only" id="editDetailsBtn">Details</button>
-        <button class="btn-primary btn-small" id="modeBtn">✎ Edit</button>
-      </div>
-    </div>
-
     <div class="split-hero">
-      <div class="split-hero-type"><span id="detailType"></span><span class="live-dot" id="liveDot" hidden title="Live — updates from your group appear instantly">● LIVE</span></div>
-      <h2 class="split-hero-title" id="detailName"></h2>
+      <div class="split-hero-row">
+        <h2 class="split-hero-title">
+          <span id="detailName"></span>
+          <button type="button" class="title-edit edit-only" id="editDetailsBtn" title="Edit trip details" aria-label="Edit trip details">✎</button>
+        </h2>
+        <div class="head-actions">
+          <button class="btn-primary btn-small" id="modeBtn">✎ Edit</button>
+          <button class="btn-ghost-light btn-small view-only" id="shareBtn">↗ Share</button>
+        </div>
+      </div>
       <div class="split-hero-meta" id="detailMeta"></div>
     </div>
 
     <!-- Members -->
-    <section class="ticket no-notch">
+    <section class="ticket no-notch people-card">
       <div class="ticket-inner">
         <div class="step-head">
           <span class="step-title">People</span>
           <span class="step-desc-inline edit-only">tap a name to rename</span>
+          <button type="button" class="people-toggle view-only" id="peopleToggle" aria-pressed="false" title="Show names">👁 <span>Names</span></button>
         </div>
         <div class="chip-list" id="detailMembers"></div>
         <div class="add-inline edit-only">
@@ -204,7 +194,10 @@ if ("serviceWorker" in navigator) {
           <div class="step-head" style="margin:0;">
             <span class="step-title">Entries</span>
           </div>
-          <button class="btn-primary edit-only" id="addEntryBtn">＋ Add entry</button>
+          <div class="entries-actions edit-only">
+            <button class="btn-ghost" id="importEntriesBtn">⇪ Import</button>
+            <button class="btn-primary" id="addEntryBtn">＋ Add entry</button>
+          </div>
         </div>
 
         <div class="totals-strip" id="totalsStrip"></div>
@@ -218,7 +211,6 @@ if ("serviceWorker" in navigator) {
                 <th>Purpose</th>
                 <th>Pay via</th>
                 <th>Paid by</th>
-                <th>Location</th>
                 <th>Note</th>
                 <th>Split with</th>
                 <th></th>
@@ -245,8 +237,7 @@ if ("serviceWorker" in navigator) {
           <div id="settleList"></div>
         </div>
         <div class="form-actions">
-          <button class="btn-ghost" id="snapshotBtn">⬇ Download snapshot</button>
-          <button class="btn-ghost danger edit-only" id="deleteSplitBtn">Delete split</button>
+          <button class="btn-ghost" id="exportBtn">⬇ Export</button>
         </div>
       </div>
     </section>
@@ -274,11 +265,11 @@ if ("serviceWorker" in navigator) {
     <div class="sheet-body">
       <div class="form-grid">
         <div>
-          <label class="field-label" for="eDate">Date &amp; time</label>
+          <label class="field-label req" for="eDate">Date &amp; time</label>
           <input type="datetime-local" id="eDate" required>
         </div>
         <div>
-          <label class="field-label" for="eAmount">Amount</label>
+          <label class="field-label req" for="eAmount">Amount</label>
           <div class="amount-field">
             <button type="button" class="sign-toggle minus" id="eSign" title="Tap to switch between paid out (−) and received (+)">−</button>
             <input type="number" id="eAmount" placeholder="0" min="0" step="0.01" inputmode="decimal" required>
@@ -286,33 +277,25 @@ if ("serviceWorker" in navigator) {
           <div class="hint" id="eSignHint">Expense (deducted). Tap − to switch to + for money received / refunds.</div>
         </div>
         <div class="span-2">
-          <label class="field-label" for="ePurpose">Purpose</label>
+          <label class="field-label req" for="ePurpose">Purpose</label>
           <input type="text" id="ePurpose" placeholder="e.g. Dinner, Train tickets, Hotel" required maxlength="80" list="purposeList">
           <datalist id="purposeList"></datalist>
         </div>
         <div>
-          <label class="field-label" for="ePayVia">Pay via</label>
+          <label class="field-label" for="ePayVia">Pay via <span class="opt">optional</span></label>
           <select id="ePayVia"></select>
         </div>
         <div>
-          <label class="field-label" for="ePaidBy">Paid by</label>
+          <label class="field-label req" for="ePaidBy">Paid by</label>
           <select id="ePaidBy"></select>
         </div>
         <div class="span-2">
-          <label class="field-label" for="eLocation">Location</label>
-          <div class="input-with-btn">
-            <input type="text" id="eLocation" placeholder="Where was this?" maxlength="120">
-            <button type="button" class="btn-ghost geo-btn" id="eGeoBtn" title="Use my current location">📍</button>
-          </div>
-          <div class="hint" id="eGeoInfo"></div>
-        </div>
-        <div class="span-2">
-          <label class="field-label" for="eNote">Note</label>
+          <label class="field-label" for="eNote">Note <span class="opt">optional</span></label>
           <input type="text" id="eNote" placeholder="e.g. Alex & Max brought their own food" maxlength="200">
         </div>
         <div class="span-2">
           <div class="split-label-row">
-            <label class="field-label" style="margin:0;">Split with <span id="eSplitCount"></span></label>
+            <label class="field-label req" style="margin:0;">Split with <span id="eSplitCount"></span></label>
             <span>
               <button type="button" class="btn-link-text" id="eSplitAll">All</button> ·
               <button type="button" class="btn-link-text" id="eSplitNone">None</button>
@@ -398,8 +381,76 @@ if ("serviceWorker" in navigator) {
   </div>
 </div>
 
+<!-- ============ EXPORT SHEET ============ -->
+<div class="sheet-backdrop" id="exportSheet" hidden>
+  <div class="sheet sheet-sm">
+    <div class="sheet-head">
+      <h3>Export split</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint" style="margin-top:0;">Includes every entry, each person's balance and who pays whom.</p>
+      <div class="export-options">
+        <button type="button" class="export-opt" data-export="pdf">
+          <span class="export-ico">📄</span>
+          <span><strong>PDF report</strong><small>A4 pages — best for printing and sharing</small></span>
+        </button>
+        <button type="button" class="export-opt" data-export="png">
+          <span class="export-ico">🖼️</span>
+          <span><strong>Image</strong><small>One PNG picture — handy for WhatsApp</small></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ IMPORT SHEET ============ -->
+<div class="sheet-backdrop" id="importSheet" hidden>
+  <div class="sheet">
+    <div class="sheet-head">
+      <h3>Import entries</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <p class="hint" style="margin-top:0;">Paste rows copied from Excel / Google Sheets, type one entry per line, or upload a file.</p>
+      <div class="import-format">
+        <div class="field-label" style="margin:0 0 4px;">Columns (in this order, or use a header row)</div>
+        <code>Date, Purpose, Amount, Paid by, Split with, Pay via, Note</code>
+        <div class="hint">Only <strong>Purpose</strong> and <strong>Amount</strong> are needed — e.g. <code>Dinner, 1200</code>. Empty date = now, empty Paid by = you, empty Split with = everyone. Separate names with <code>;</code> and write <code>+500</code> for money received.</div>
+      </div>
+      <textarea id="importText" rows="6" spellcheck="false" placeholder="06/10/2026, Hotel, 4500, Alex, all, UPI&#10;Dinner, 1200&#10;Taxi, 600, Me, Me; Alex"></textarea>
+      <div class="import-tools">
+        <label class="btn-ghost btn-small file-btn">📄 Choose Excel / CSV file<input type="file" id="importFile" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden></label>
+        <button type="button" class="btn-link-text" id="importTemplateBtn">Download template</button>
+      </div>
+      <div id="importPreview"></div>
+    </div>
+    <div class="sheet-foot">
+      <span style="flex:1"></span>
+      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+      <button type="button" class="btn-primary" id="importConfirmBtn" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM POPUP ============ -->
+<div class="sheet-backdrop" id="confirmSheet" hidden>
+  <div class="sheet sheet-sm confirm-sheet" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <div class="sheet-body">
+      <div class="confirm-icon" id="confirmIcon">🗑️</div>
+      <h3 id="confirmTitle">Delete this split?</h3>
+      <p id="confirmMessage"></p>
+    </div>
+    <div class="sheet-foot">
+      <button type="button" class="btn-ghost" id="confirmCancelBtn">Cancel</button>
+      <button type="button" class="btn-danger" id="confirmOkBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="script.js"></script>
+<script src="io.js"></script>
 </body>
 </html>

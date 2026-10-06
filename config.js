@@ -7,5 +7,8 @@
 
 window.SPLITEASY_CONFIG = {
   supabaseUrl: 'https://fzmdrfmcszehkscbzkhl.supabase.co',
+  // Optional: Google Maps Platform key with "Places API (New)" enabled, restricted to your site's
+  // URLs (HTTP referrers). Empty = free OpenStreetMap suggestions instead.
+  googleMapsKey: '',
   supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ6bWRyZm1jc3plaGtzY2J6a2hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwOTA2MTIsImV4cCI6MjEwNjY2NjYxMn0.7qRnBKYwhiZyoyWv0HTLsb7KZz5eHWva_cPkphdavjE'
 };
