@@ -10,7 +10,7 @@ Live: https://subhodippal.github.io/billSplit/
 | | Offline mode | Cloud mode (Supabase) |
 |---|---|---|
 | Turned on when | `config.js` is empty | `config.js` has your Supabase URL + anon key |
-| Login | Just your name, on this device | Real accounts (email + password or email link) |
+| Login | Just your name, on this device | Real accounts via **Continue with Google** |
 | Data | This browser only | Supabase Postgres |
 | Sharing | Link carrying a copy of the split; you merge copies by hand | Invite by email or link; everyone edits the same split **live** |
 

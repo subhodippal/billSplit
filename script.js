@@ -68,16 +68,17 @@ function touch(obj){ obj.updatedAt = Date.now(); if(user) obj.updatedBy = user.n
 
 /* ---------------- AUTH ---------------- */
 let afterLogin = null;
-let loginMode = 'signin';   // cloud: 'signin' | 'signup'
 
 function renderAuth(){
   const area = $('authArea');
   if(user){
     area.innerHTML = `
       <div class="user-pill">
-        <button class="user-avatar" id="avatarBtn" title="Change your name">${escapeHtml(initials(user.name))}</button>
+        <button class="user-avatar" id="avatarBtn" title="Change your name">${user.avatar
+          ? `<img src="${escapeHtml(user.avatar)}" alt="" referrerpolicy="no-referrer" data-i="${escapeHtml(initials(user.name))}" onerror="this.replaceWith(this.dataset.i)">`
+          : escapeHtml(initials(user.name))}</button>
         <span class="user-name">${escapeHtml(user.name)}</span>
-        <button class="btn-ghost-light btn-small" id="logoutBtn">Log out</button>
+        <button class="logout-btn" id="logoutBtn" title="Log out">⎋ Log out</button>
       </div>`;
     $('avatarBtn').onclick = changeMyName;
     $('logoutBtn').onclick = async () => {
@@ -112,18 +113,6 @@ async function changeMyName(){
   toast('Name updated — rename yourself in a split’s People list if needed');
 }
 
-function setLoginMode(mode){
-  loginMode = mode;
-  document.querySelectorAll('#loginTabs button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-  const signup = mode === 'signup';
-  $('loginTitle').textContent = CLOUD ? (signup ? 'Create account' : 'Sign in') : 'Log in';
-  $('loginNameWrap').hidden = CLOUD && !signup;
-  $('loginName').required = !CLOUD || signup;
-  $('loginPassword').autocomplete = signup ? 'new-password' : 'current-password';
-  $('loginSubmit').textContent = CLOUD ? (signup ? 'Create account' : 'Sign in') : 'Continue';
-  showLoginMsg('');
-}
-
 function showLoginMsg(msg, isError){
   $('loginMsg').hidden = !msg;
   $('loginMsg').textContent = msg;
@@ -132,24 +121,17 @@ function showLoginMsg(msg, isError){
 
 function openLogin(then){
   afterLogin = then || null;
-  if(CLOUD){
-    $('loginTabs').hidden = false;
-    $('loginPasswordWrap').hidden = false;
-    $('loginPassword').required = true;
-    $('loginEmail').required = true;
-    $('loginEmailLabel').textContent = 'Email';
-    $('loginIntro').textContent = 'Sign in to keep your splits in the cloud and share them with your group.';
+  $('loginGoogle').hidden = !CLOUD;
+  $('loginForm').hidden = CLOUD;
+  if(!CLOUD){
+    $('loginName').value = user ? user.name : '';
+    $('loginEmail').value = user ? (user.email || '') : '';
   }
-  $('loginName').value = user ? user.name : '';
-  $('loginEmail').value = user ? (user.email || '') : '';
-  setLoginMode(loginMode);
+  showLoginMsg('');
+  $('googleBtn').disabled = false;
   openSheet('loginSheet');
-  setTimeout(() => (CLOUD ? $('loginEmail') : $('loginName')).focus(), 50);
+  if(!CLOUD) setTimeout(() => $('loginName').focus(), 50);
 }
-$('loginTabs').addEventListener('click', e => {
-  const b = e.target.closest('[data-mode]');
-  if(b) setLoginMode(b.dataset.mode);
-});
 
 function requireLogin(then){
   if(user){ then(); return; }
@@ -165,58 +147,38 @@ function finishLogin(){
   if(next) next(); else route();
 }
 
-$('loginForm').addEventListener('submit', async (e) => {
+// Offline mode only: no accounts, just a name.
+$('loginForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  if(!CLOUD){
-    const name = cleanName($('loginName').value);
-    if(!name) return;
-    user = { name, email: $('loginEmail').value.trim() };
-    save(USER_KEY, user);
-    finishLogin();
-    return;
-  }
-  const email = $('loginEmail').value.trim();
-  const password = $('loginPassword').value;
-  const btn = $('loginSubmit');
-  btn.disabled = true;
-  showLoginMsg('');
-  rememberReturn();
-  try{
-    if(loginMode === 'signup'){
-      const name = cleanName($('loginName').value);
-      const res = await Cloud.signUp(name, email, password);
-      if(!res.session){
-        showLoginMsg(`Almost done — we sent a confirmation link to ${email}. Open it on this device to finish signing up.`);
-        return;
-      }
-    } else {
-      await Cloud.signIn(email, password);
-    }
-    // onAuthStateChange picks up the session and calls onSignedIn()
-  } catch(err){
-    showLoginMsg(err.message, true);
-  } finally {
-    btn.disabled = false;
-  }
+  const name = cleanName($('loginName').value);
+  if(!name) return;
+  user = { name, email: $('loginEmail').value.trim() };
+  save(USER_KEY, user);
+  finishLogin();
 });
 
-// Email links land on the site root; remember where to go back to afterwards.
+// Google sign-in leaves the page and comes back to the site root signed in;
+// onAuthStateChange → onSignedIn() then returns to the remembered screen.
+$('googleBtn').onclick = async function(){
+  this.disabled = true;
+  showLoginMsg('');
+  rememberReturn();
+  try{ await Cloud.signInWithGoogle(); }
+  catch(err){
+    this.disabled = false;
+    showLoginMsg(/provider is not enabled/i.test(err.message)
+      ? 'Google sign-in isn’t switched on for this app yet.'
+      : err.message, true);
+  }
+};
+
+// Sign-in redirects land on the site root; remember where to go back to afterwards.
 const RETURN_KEY = 'se_return';
 function rememberReturn(){ try{ localStorage.setItem(RETURN_KEY, location.hash || '#/'); } catch(_){} }
 function takeReturn(){
   try{ const h = localStorage.getItem(RETURN_KEY); localStorage.removeItem(RETURN_KEY); return h; }
   catch(_){ return null; }
 }
-
-$('magicLinkBtn').onclick = async () => {
-  const email = $('loginEmail').value.trim();
-  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ showLoginMsg('Enter your email first.', true); $('loginEmail').focus(); return; }
-  rememberReturn();
-  try{
-    await Cloud.magicLink(email, loginMode === 'signup' ? cleanName($('loginName').value) : '');
-    showLoginMsg(`Check ${email} — tap the link in that email to sign in.`);
-  } catch(err){ showLoginMsg(err.message, true); }
-};
 
 /* ---------------- SHEETS / TOAST ---------------- */
 function openSheet(id){ $(id).hidden = false; document.body.classList.add('no-scroll'); }
@@ -288,8 +250,7 @@ function renderSplitList(keepScroll){
   renderUploadBanner();
   if(CLOUD && !user){
     $('splitList').innerHTML = `<div class="list-empty">
-      <p>Log in to see your splits and the ones shared with you.</p>
-      <button class="btn-primary" onclick="openLogin()">Log in</button></div>`;
+      <p style="margin:0;">Log in to see your splits and the ones shared with you.</p></div>`;
     showView('splits');
     return;
   }
@@ -429,9 +390,27 @@ $('splitForm').addEventListener('submit', async (e) => {
 
 /* ---------------- SPLIT DETAIL ---------------- */
 let currentSplitId = null;
+let editMode = false;   // splits open read-only; tap Edit to change anything
 function cur(){ return getSplit(currentSplitId); }
 
+function setEditMode(on){
+  editMode = on;
+  $('view-split').classList.toggle('editing', on);
+  $('modeBtn').textContent = on ? '✓ Done' : '✎ Edit';
+  $('entryEmpty').innerHTML = on
+    ? 'No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.'
+    : 'No entries yet. Tap <strong>✎ Edit</strong> to start adding expenses.';
+}
+$('modeBtn').onclick = () => {
+  const toggle = on => { setEditMode(on); if(cur()) renderMembers(); };
+  if(editMode){ toggle(false); return; }
+  requireLogin(() => toggle(true));
+};
+
 function renderSplitDetail(id, keepScroll){
+  // Back to view mode when opening another split or arriving from outside it
+  // (returning from "Details" keeps you editing).
+  if(id !== currentSplitId || !['split', 'new'].includes(currentView)) setEditMode(false);
   currentSplitId = id;
   const s = cur();
   $('detailType').textContent = `${s.type} split`;
@@ -464,8 +443,8 @@ function renderMembers(){
       <span class="avatar-dot"></span>
       <button type="button" class="chip-name" data-rename="${escapeHtml(m)}" title="Rename">${escapeHtml(m)}</button>
       ${user && m === user.name ? '<span class="you">YOU</span>' : ''}
-      <button type="button" class="chip-x" data-remove="${escapeHtml(m)}" title="Remove">×</button>
-    </div>`).join('') || '<span class="hint">No one yet — add people below.</span>';
+      <button type="button" class="chip-x edit-only" data-remove="${escapeHtml(m)}" title="Remove">×</button>
+    </div>`).join('') || `<span class="hint">No one yet${editMode ? ' — add people below' : ''}.</span>`;
 }
 
 function addMember(split, rawName){
@@ -504,6 +483,7 @@ $('detailMemberAddBtn').onclick = addDetailMember;
 $('detailMemberInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addDetailMember(); } });
 
 $('detailMembers').addEventListener('click', (e) => {
+  if(!editMode) return;
   const s = cur();
   const ren = e.target.closest('[data-rename]');
   const rem = e.target.closest('[data-remove]');
@@ -593,7 +573,7 @@ function renderEntries(){
       <td class="cell-note c-note ${e.note ? '' : 'c-empty'}" data-label="Note">${escapeHtml(e.note || '—')}</td>
       <td class="c-split" data-label="Split">${everyone ? 'Everyone' : `${e.splitAmong.length} of ${s.members.length}`}
         ${everyone ? '' : `<span class="excl-note">excl. ${excluded.map(escapeHtml).join(', ')}</span>`}</td>
-      <td class="cell-actions">
+      <td class="cell-actions edit-only">
         <button class="btn-icon" title="Edit" data-edit="${e.id}">✏️</button>
         <button class="btn-icon" title="Delete" data-delete="${e.id}">🗑️</button>
       </td>
@@ -602,7 +582,7 @@ function renderEntries(){
 }
 
 $('entryBody').addEventListener('click', (e) => {
-  if(e.target.closest('[data-stop]')) return;
+  if(e.target.closest('[data-stop]') || !editMode) return;
   const del = e.target.closest('[data-delete]');
   if(del){ deleteEntry(del.dataset.delete); return; }
   const row = e.target.closest('tr[data-id]');

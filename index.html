@@ -171,7 +171,8 @@ if ("serviceWorker" in navigator) {
       <span></span>
       <div class="head-actions">
         <button class="btn-ghost-light btn-small" id="shareBtn">↗ Share</button>
-        <button class="btn-ghost-light btn-small" id="editDetailsBtn">Edit</button>
+        <button class="btn-ghost-light btn-small edit-only" id="editDetailsBtn">Details</button>
+        <button class="btn-primary btn-small" id="modeBtn">✎ Edit</button>
       </div>
     </div>
 
@@ -186,10 +187,10 @@ if ("serviceWorker" in navigator) {
       <div class="ticket-inner">
         <div class="step-head">
           <span class="step-title">People</span>
-          <span class="step-desc-inline">tap a name to rename</span>
+          <span class="step-desc-inline edit-only">tap a name to rename</span>
         </div>
         <div class="chip-list" id="detailMembers"></div>
-        <div class="add-inline">
+        <div class="add-inline edit-only">
           <input type="text" id="detailMemberInput" placeholder="Add someone to the group" maxlength="40">
           <button type="button" class="btn-sage" id="detailMemberAddBtn">Add</button>
         </div>
@@ -203,7 +204,7 @@ if ("serviceWorker" in navigator) {
           <div class="step-head" style="margin:0;">
             <span class="step-title">Entries</span>
           </div>
-          <button class="btn-primary" id="addEntryBtn">＋ Add entry</button>
+          <button class="btn-primary edit-only" id="addEntryBtn">＋ Add entry</button>
         </div>
 
         <div class="totals-strip" id="totalsStrip"></div>
@@ -226,7 +227,7 @@ if ("serviceWorker" in navigator) {
             <tbody id="entryBody"></tbody>
           </table>
         </div>
-        <div class="empty-note" id="entryEmpty">No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.</div>
+        <div class="empty-note" id="entryEmpty"></div>
       </div>
     </section>
 
@@ -245,7 +246,7 @@ if ("serviceWorker" in navigator) {
         </div>
         <div class="form-actions">
           <button class="btn-ghost" id="snapshotBtn">⬇ Download snapshot</button>
-          <button class="btn-ghost danger" id="deleteSplitBtn">Delete split</button>
+          <button class="btn-ghost danger edit-only" id="deleteSplitBtn">Delete split</button>
         </div>
       </div>
     </section>
@@ -258,7 +259,9 @@ if ("serviceWorker" in navigator) {
     </div>
   </section>
 
-  <footer class="foot">— Made with ❤️ by Subho —</footer>
+  <footer class="foot">— Made with ❤️ by Subho —
+    <div class="foot-links"><a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a></div>
+  </footer>
 </main>
 
 <!-- ============ ENTRY SHEET ============ -->
@@ -332,38 +335,38 @@ if ("serviceWorker" in navigator) {
 
 <!-- ============ LOGIN SHEET ============ -->
 <div class="sheet-backdrop" id="loginSheet" hidden>
-  <form class="sheet sheet-sm" id="loginForm" autocomplete="on">
+  <div class="sheet sheet-sm login-sheet">
     <div class="sheet-head">
-      <h3 id="loginTitle">Log in</h3>
+      <h3>🔑 Log in / Sign up</h3>
       <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="seg" id="loginTabs" hidden>
-        <button type="button" data-mode="signin" class="active">Sign in</button>
-        <button type="button" data-mode="signup">Create account</button>
+      <!-- Cloud mode: Google is the only way in -->
+      <div id="loginGoogle">
+        <p class="login-lead">One tap with your Google account — no password, no email to wait for. New here? Your account is created automatically.</p>
+        <button type="button" class="google-btn" id="googleBtn">
+          <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
+            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/>
+          </svg>
+          <span>Continue with Google</span>
+        </button>
+        <div class="form-msg" id="loginMsg" hidden></div>
+        <p class="how-foot login-fine">We only use your name and email to label the expenses you add.<br>
+          By continuing you agree to our <a href="terms.html" target="_blank">Terms</a> and <a href="privacy.html" target="_blank">Privacy Policy</a>.</p>
       </div>
-      <p class="hint" id="loginIntro" style="margin-top:0;">Your name is used as the default <strong>Paid by</strong> and is stamped on every entry you add.</p>
-      <div id="loginNameWrap">
-        <label class="field-label" for="loginName">Your name</label>
-        <input type="text" id="loginName" placeholder="e.g. Subho" maxlength="40" autocomplete="name">
-        <div style="height:12px"></div>
-      </div>
-      <label class="field-label" for="loginEmail" id="loginEmailLabel">Email (optional)</label>
-      <input type="email" id="loginEmail" placeholder="you@example.com" maxlength="120" autocomplete="email">
-      <div id="loginPasswordWrap" hidden>
-        <div style="height:12px"></div>
-        <label class="field-label" for="loginPassword">Password</label>
-        <input type="password" id="loginPassword" placeholder="At least 6 characters" minlength="6" autocomplete="current-password">
-        <div class="hint">or <button type="button" class="btn-link-text" id="magicLinkBtn">email me a sign-in link</button> instead — no password needed.</div>
-      </div>
-      <div class="form-msg" id="loginMsg" hidden></div>
+
+      <!-- Offline mode (no Supabase): just a name to stamp on entries -->
+      <form id="loginForm" autocomplete="on" hidden>
+        <p class="login-lead">Your name is used as the default <strong>Paid by</strong> and is stamped on every entry you add.</p>
+        <input type="text" id="loginName" placeholder="Your name, e.g. Subho" maxlength="40" autocomplete="name" required>
+        <input type="email" id="loginEmail" placeholder="Email (optional)" maxlength="120" autocomplete="email">
+        <button type="submit" class="btn-primary btn-block">Continue</button>
+      </form>
     </div>
-    <div class="sheet-foot">
-      <span style="flex:1"></span>
-      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
-      <button type="submit" class="btn-primary" id="loginSubmit">Continue</button>
-    </div>
-  </form>
+  </div>
 </div>
 
 <!-- ============ SHARE SHEET (cloud) ============ -->

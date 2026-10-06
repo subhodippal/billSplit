@@ -128,20 +128,25 @@
     Cloud.userId = session.user.id;
     const { data } = await sb.from('profiles').select('display_name, email').eq('id', session.user.id).maybeSingle();
     const meta = session.user.user_metadata || {};
+    const emailName = (session.user.email || '').split('@')[0];
+    const googleName = String(meta.full_name || meta.name || '').trim().slice(0, 40);
+    let name = (data && data.display_name) || meta.display_name || googleName || emailName;
+    // New Google users get a profile named after their email; switch to their real name once.
+    if(googleName && data && data.display_name === emailName){
+      name = googleName;
+      await sb.from('profiles').update({ display_name: name }).eq('id', session.user.id);
+    }
     return {
       id: session.user.id,
       email: session.user.email,
-      name: (data && data.display_name) || meta.display_name || (session.user.email || '').split('@')[0]
+      name,
+      avatar: meta.avatar_url || meta.picture || ''
     };
   };
-  Cloud.signIn = async (email, password) => check(await sb.auth.signInWithPassword({ email, password }));
-  Cloud.signUp = async (name, email, password) => check(await sb.auth.signUp({
-    email, password,
-    options: { data: { display_name: name }, emailRedirectTo: location.origin + location.pathname }
-  }));
-  Cloud.magicLink = async (email, name) => check(await sb.auth.signInWithOtp({
-    email,
-    options: { data: name ? { display_name: name } : undefined, emailRedirectTo: location.origin + location.pathname }
+  // Redirects to Google; comes back to this page with the session (new users are created automatically).
+  Cloud.signInWithGoogle = async () => check(await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: location.origin + location.pathname, queryParams: { prompt: 'select_account' } }
   }));
   Cloud.signOut = async () => {
     if(channel){ await sb.removeChannel(channel); channel = null; }
