@@ -450,7 +450,6 @@ function renderSplitList(keepScroll){
 }
 
 /* ---------------- CREATE / EDIT SPLIT ---------------- */
-let draftMembers = [];
 let draftGeo = null;
 let editingSplitId = null;
 
@@ -463,38 +462,9 @@ function renderSplitForm(splitId){
   $('splitLocation').value = s ? (s.location || '') : '';
   draftGeo = s ? s.geo : null;
   renderGeoInfo('splitGeoInfo', draftGeo);
-  // Members are managed on the split page once it exists
-  document.querySelectorAll('#splitForm .perf, #splitForm .perf ~ .step-head, #splitForm .perf ~ .step-desc, #splitForm .add-inline, #memberChips')
-    .forEach(el => el.style.display = s ? 'none' : '');
-  draftMembers = [me()];
-  renderDraftMembers();
   showView('new');
 }
 
-function renderDraftMembers(){
-  $('memberChips').innerHTML = draftMembers.map(m => `
-    <div class="chip"><span class="avatar-dot"></span><span>${escapeHtml(m)}</span>
-      ${m === me() ? '<span class="you">YOU</span>&nbsp;' :
-        `<button type="button" class="chip-x" data-remove="${escapeHtml(m)}" title="Remove">×</button>`}
-    </div>`).join('');
-}
-
-function addDraftMember(){
-  const name = cleanName($('memberInput').value);
-  if(!name) return;
-  if(!hasName(draftMembers, name)) draftMembers.push(name);
-  $('memberInput').value = '';
-  $('memberInput').focus();
-  renderDraftMembers();
-}
-$('memberAddBtn').onclick = addDraftMember;
-$('memberInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addDraftMember(); } });
-$('memberChips').addEventListener('click', e => {
-  const btn = e.target.closest('[data-remove]');
-  if(!btn) return;
-  draftMembers = draftMembers.filter(m => m !== btn.dataset.remove);
-  renderDraftMembers();
-});
 $('splitGeoBtn').onclick = () => captureGeo($('splitGeoBtn'), $('splitLocation'), 'splitGeoInfo', g => { draftGeo = g; });
 attachPlaceSuggest($('splitLocation'), {
   onPick: g => { draftGeo = g; renderGeoInfo('splitGeoInfo', g); },
@@ -505,8 +475,6 @@ $('splitForm').addEventListener('submit', async (e) => {
   e.preventDefault();
   const name = $('splitName').value.trim();
   if(!name){ $('splitName').focus(); return; }
-  // pick up a name typed but not yet added
-  if($('memberInput').value.trim()) addDraftMember();
 
   if(editingSplitId){
     const s = getSplit(editingSplitId);
@@ -529,7 +497,7 @@ $('splitForm').addEventListener('submit', async (e) => {
     currency: DEFAULT_CURRENCY,
     location: $('splitLocation').value.trim(),
     geo: draftGeo,
-    members: draftMembers.slice(),
+    members: [me()],   // you; add others from the split's People section
     payModes: DEFAULT_PAY_MODES.slice(),
     entries: [],
     createdBy: me(),
@@ -546,7 +514,6 @@ $('splitForm').addEventListener('submit', async (e) => {
   if(!ok){ delete splits[s.id]; return; }
   // Pick up server-made fields (invite code) once it's really saved.
   if(!localMode() && !outbox.length) refreshSplit(s.id);
-  $('memberInput').value = '';
   toast('Split created');
   location.hash = `#/split/${encodeURIComponent(s.id)}`;
 });
@@ -601,8 +568,10 @@ function renderSplitDetail(id, keepScroll){
 /* --- members --- */
 function renderMembers(){
   const s = cur();
+  // Tooltip: name, and their email on the next line if they have one.
+  const tip = m => escapeHtml(personInfo(s, m).email ? `${m}\n${personInfo(s, m).email}` : m);
   $('detailMembers').innerHTML = s.members.map(m => `
-    <div class="chip person-chip" data-tip="${escapeHtml(m)}" title="${escapeHtml(m)}">
+    <div class="chip person-chip" data-person="${escapeHtml(m)}" data-tip="${tip(m)}" title="${tip(m)}">
       ${personAvatar(m)}
       <button type="button" class="chip-name" data-rename="${escapeHtml(m)}">${escapeHtml(m)}</button>
       ${m === me() ? '<span class="you">YOU</span>' : ''}
@@ -628,6 +597,7 @@ async function loadAvatars(s){
   try{ people = await Cloud.splitPeople(s); }
   catch(_){ return; }   // photos are a nice-to-have
   people.forEach(p => { if(p.avatar) splitAvatars[p.name.toLowerCase()] = p.avatar; });
+  if(currentSplitId === s.id) await syncPeopleByEmail(s, people);
   if(currentSplitId === s.id && currentView === 'split'){ renderMembers(); renderEntries(); }
 }
 
@@ -681,48 +651,155 @@ async function ensurePeople(s, names){
   return true;
 }
 
-async function addDetailMember(){
+/* --- add / edit a person: name + optional email --- */
+// With an email the split is shared with them; if they already use SplitEasy their
+// name and photo fill in, and if not, they're linked when they sign up with that email.
+function personInfo(s, name){ return (s && s.people && s.people[name]) || {}; }
+function isEmail(v){ return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(v || '').trim()); }
+
+let personEditing = null;   // name being edited, or null when adding
+let personFound = null;     // { name, avatar } when the typed email has an account
+let lookupTimer, lookupSeq = 0;
+
+function openPersonSheet(name){
   const s = cur();
-  const name = cleanName($('detailMemberInput').value);
-  if(!name) return;
-  if(hasName(s.members, name)){ toast(`${name} is already in the group`); return; }
-  $('detailMemberInput').value = '';
-  const added = name;
-  if(!await ensurePeople(s, [name])) return;
-  renderSplitDetail(s.id);
-  toast(`${added} added — included in new entries from now on`);
+  personEditing = name || null;
+  personFound = null;
+  $('personTitle').textContent = name ? 'Edit person' : 'Add person';
+  $('personSaveBtn').textContent = name ? 'Save' : 'Add person';
+  $('personName').value = name || '';
+  $('personEmail').value = name ? (personInfo(s, name).email || '') : '';
+  $('personLookup').hidden = true;
+  $('personEmailHint').hidden = false;
+  openSheet('personSheet');
+  setTimeout(() => (name ? $('personName') : $('personEmail')).focus(), 60);
 }
-$('detailMemberAddBtn').onclick = addDetailMember;
-$('detailMemberInput').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); addDetailMember(); } });
+$('addPersonBtn').onclick = () => openPersonSheet(null);
+
+function showLookup(html, cls){
+  $('personLookup').innerHTML = html;
+  $('personLookup').className = 'person-lookup ' + (cls || '');
+  $('personLookup').hidden = !html;
+  $('personEmailHint').hidden = !!html;
+}
+
+// Typing an email: is this person already on SplitEasy?
+$('personEmail').addEventListener('input', () => {
+  clearTimeout(lookupTimer);
+  const seq = ++lookupSeq;
+  const email = $('personEmail').value.trim().toLowerCase();
+  if(personFound && $('personName').value === personFound.name) $('personName').value = '';
+  personFound = null;
+  if(!isEmail(email)){ showLookup(''); return; }
+  if(localMode()){ showLookup('🔒 Log in to share the split by email — their name stays as you type it.', 'muted'); return; }
+  if(email === (user.email || '').toLowerCase()){ showLookup('That’s you — you’re already in this split.', 'muted'); return; }
+  showLookup('Checking…', 'muted');
+  lookupTimer = setTimeout(async () => {
+    let found;
+    try{ found = await Cloud.findUser(email); } catch(_){ found = undefined; }
+    if(seq !== lookupSeq) return;
+    if(found){
+      personFound = found;
+      $('personName').value = cleanName(found.name);
+      showLookup(`${foundAvatar(found)}<span><strong>${escapeHtml(found.name)}</strong> is on SplitEasy — name and photo filled in</span>`, 'found');
+    } else if(found === null){
+      showLookup('✉ Not on SplitEasy yet — add their name below. They’ll join this split when they sign up with this email.', 'missing');
+    } else {
+      showLookup('');
+    }
+  }, 350);
+});
+
+function foundAvatar(found){
+  return `<span class="p-avatar">${escapeHtml(found.name.charAt(0).toUpperCase())}${found.avatar
+    ? `<img src="${escapeHtml(found.avatar)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
+}
+
+$('personForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const s = cur();
+  const name = cleanName($('personName').value);
+  const email = $('personEmail').value.trim().toLowerCase();
+  if(!name){ toast('Enter their name'); $('personName').focus(); return; }
+  if(email && !isEmail(email)){ toast('That email doesn’t look right'); $('personEmail').focus(); return; }
+  if(email && email === (user && user.email || '').toLowerCase()){ toast('That’s your email'); return; }
+  const from = personEditing;
+  const clash = s.members.find(m => m !== from && m.toLowerCase() === name.toLowerCase());
+  if(clash && !from){ toast(`${clash} is already in the group`); return; }
+  if(clash && !confirm(`"${clash}" already exists. Merge "${from}" into "${clash}"?`)) return;
+  const usedBy = email && s.members.find(m => m !== from && m !== clash && (personInfo(s, m).email || '') === email);
+  if(usedBy){ toast(`${usedBy} already has that email`); return; }
+
+  const btn = $('personSaveBtn');
+  btn.disabled = true;
+  try{
+    let target = name;
+    if(!from){
+      if(!await ensurePeople(s, [name])) return;
+    } else if(clash || name !== from){
+      target = clash || name;
+      if(!await renameEverywhere(s, from, target)) return;
+    }
+    // Remember their email with the split.
+    const before = personInfo(s, target).email || '';
+    const people = { ...(s.people || {}) };
+    if(email) people[target] = { ...(people[target] || {}), email };
+    else delete people[target];
+    s.people = people;
+    touch(s);
+    await push({ type: 'saveSplitMeta', splitId: s.id });
+    if(personFound && personFound.avatar) splitAvatars[target.toLowerCase()] = personFound.avatar;
+    // Share the split with that email (they get access now, or when they sign up).
+    let shared = false;
+    if(email && email !== before && !localMode()){
+      try{ await Cloud.invite(s, email); shared = true; } catch(err){ toast(err.message); }
+    }
+    closeSheet('personSheet');
+    renderSplitDetail(s.id, true);
+    toast(from ? `${target} updated` : `${target} added${shared ? ' — the split is shared with them' : ''}`);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// Anyone in People whose email belongs to someone who has joined: show them under their
+// real name everywhere (People, "paid by", shares) — which also brings their photo.
+async function syncPeopleByEmail(s, accounts){
+  const people = s.people || {};
+  for(const acc of accounts){
+    if(!acc.email || !acc.name) continue;
+    const entry = s.members.find(m => (people[m] && people[m].email || '').toLowerCase() === acc.email);
+    if(!entry || entry === acc.name) continue;
+    const target = s.members.find(m => m !== entry && m.toLowerCase() === acc.name.toLowerCase()) || cleanName(acc.name);
+    if(await renameEverywhere(s, entry, target)) await push({ type: 'saveSplitMeta', splitId: s.id });
+  }
+}
 
 $('detailMembers').addEventListener('click', (e) => {
   if(!editMode) return;
   const s = cur();
-  const ren = e.target.closest('[data-rename]');
+  // × removes; tapping anywhere else on a person (photo or name) edits them.
   const rem = e.target.closest('[data-remove]');
-  if(ren) renameMember(s, ren.dataset.rename);
-  if(rem) removeMember(s, rem.dataset.remove);
+  if(rem){ removeMember(s, rem.dataset.remove); return; }
+  const chip = e.target.closest('[data-person]');
+  if(chip) openPersonSheet(chip.dataset.person);
 });
 
-async function renameMember(s, oldName){
-  const input = prompt(`Rename "${oldName}" to:`, oldName);
-  if(input === null) return;
-  const newName = cleanName(input);
-  if(!newName || newName === oldName) return;
-  const clash = s.members.find(m => m !== oldName && m.toLowerCase() === newName.toLowerCase());
-  if(clash && !confirm(`"${clash}" already exists. Merge "${oldName}" into "${clash}"?`)) return;
-  const target = clash || newName;
-
-  s.members = dedupe(s.members.map(m => m === oldName ? target : m));
+// Rename (or merge) a person everywhere: People, "paid by", shares and their email.
+async function renameEverywhere(s, from, to){
+  s.members = dedupe(s.members.map(m => m === from ? to : m));
   s.entries.forEach(en => {
     let changed = false;
-    if(en.paidBy === oldName){ en.paidBy = target; changed = true; }
-    if(en.splitAmong.includes(oldName)){ en.splitAmong = dedupe(en.splitAmong.map(n => n === oldName ? target : n)); changed = true; }
+    if(en.paidBy === from){ en.paidBy = to; changed = true; }
+    if(en.splitAmong.includes(from)){ en.splitAmong = dedupe(en.splitAmong.map(n => n === from ? to : n)); changed = true; }
     if(changed) touch(en);
   });
+  if(s.people && s.people[from]){
+    s.people = { ...s.people, [to]: { ...s.people[from], ...(s.people[to] || {}) } };
+    delete s.people[from];
+  }
   touch(s);
-  renderSplitDetail(s.id, true);
-  if(await push({ type: 'renamePerson', splitId: s.id, from: oldName, to: target })) toast(`Renamed to ${target} everywhere`);
+  return push({ type: 'renamePerson', splitId: s.id, from, to });
 }
 
 async function removeMember(s, name){
@@ -741,9 +818,11 @@ async function removeMember(s, name){
   s.entries.forEach(en => {
     if(en.splitAmong.includes(name)){ en.splitAmong = en.splitAmong.filter(n => n !== name); touch(en); }
   });
+  if(s.people && s.people[name]){ s.people = { ...s.people }; delete s.people[name]; }
   touch(s);
   renderSplitDetail(s.id, true);
   await push({ type: 'removePerson', splitId: s.id, name });
+  if(s.people) push({ type: 'saveSplitMeta', splitId: s.id });
 }
 
 /* --- entries table --- */

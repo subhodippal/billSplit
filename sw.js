@@ -1,4 +1,4 @@
-const CACHE_NAME = "spliteasy-v29";
+const CACHE_NAME = "spliteasy-v31";
 
 const urlsToCache = [
     "./",

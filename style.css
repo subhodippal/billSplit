@@ -336,7 +336,7 @@ button:disabled{ opacity:.6; cursor: default; }
     content: attr(data-tip);
     position:absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
     background: var(--ink); color: var(--paper);
-    font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    font-size: 12.5px; font-weight: 600; white-space: pre; text-align: center; line-height: 1.4;
     padding: 6px 10px; border-radius: 8px; z-index: 5;
     box-shadow: 0 6px 16px rgba(0,0,0,0.25);
     animation: tipIn .12s ease;
@@ -1018,3 +1018,16 @@ body.no-scroll{ overflow:hidden; }
   .title-desktop{ display:none; }
   .title-mobile{ display:inline; }
 }
+
+/* ---------- People: "＋ Add person" + popup ---------- */
+.add-person-btn{ margin-top: 12px; }
+.person-sheet .sheet-body{ padding-top: 2px; }
+.person-lookup{
+  display:flex; align-items:center; gap: 10px; margin-top: 8px;
+  padding: 9px 12px; border-radius: 10px; font-size: 13.5px; line-height: 1.45;
+  background: var(--paper-dim); color: var(--ink-soft);
+}
+.person-lookup.found{ background: var(--sage-bg); color: var(--ink); }
+.person-lookup.missing{ background: rgba(232,169,59,0.16); color: var(--ink); }
+.person-lookup .p-avatar{ width: 34px; height: 34px; font-size: 14px; background: var(--sage); color: #fff; }
+#view-split.editing .person-chip{ cursor: pointer; }

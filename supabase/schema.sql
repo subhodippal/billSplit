@@ -38,6 +38,9 @@ create table if not exists public.splits (
   updated_at      timestamptz not null default now(),
   updated_by      text
 );
+-- Email per person in a split: { "Rahul": { "email": "rahul@gmail.com" } }. Used to share the
+-- split with them and to show their real name + photo once they sign in with that email.
+alter table public.splits add column if not exists people jsonb not null default '{}'::jsonb;
 
 -- Accounts that can see and edit a split (people it was shared with).
 create table if not exists public.split_members (
@@ -330,6 +333,18 @@ revoke execute on function public.join_split(text), public.accept_invites(), pub
 grant execute on function public.join_split(text), public.accept_invites(), public.invite_to_split(uuid, text),
   public.reset_share_code(uuid), public.add_person(uuid, text), public.rename_person(uuid, text, text),
   public.remove_person(uuid, text) to authenticated;
+
+-- Look up a SplitEasy user by exact email (when adding them to a split).
+-- Returns only their display name and photo, and only to signed-in users.
+create or replace function public.find_user_by_email(p_email text)
+returns table(display_name text, avatar_url text)
+language sql stable security definer set search_path = public as $$
+  select p.display_name, p.avatar_url from profiles p
+   where auth.uid() is not null and p.email = lower(trim(p_email))
+   limit 1;
+$$;
+revoke execute on function public.find_user_by_email(text) from public, anon;
+grant execute on function public.find_user_by_email(text) to authenticated;
 
 -- ---------- Realtime ----------
 -- Broadcast changes so everyone on a split sees updates live (RLS still applies).

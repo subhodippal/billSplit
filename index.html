@@ -104,10 +104,9 @@ if ("serviceWorker" in navigator) {
       <span></span>
     </div>
 
-    <form class="ticket" id="splitForm" autocomplete="off">
+    <form class="ticket no-notch" id="splitForm" autocomplete="off">
       <div class="ticket-inner">
         <div class="step-head">
-          <span class="step-num">STEP 01</span>
           <span class="step-title">What's this split for?</span>
         </div>
 
@@ -125,19 +124,6 @@ if ("serviceWorker" in navigator) {
             <div class="hint" id="splitGeoInfo"></div>
           </div>
         </div>
-
-        <hr class="perf">
-
-        <div class="step-head">
-          <span class="step-num">STEP 02</span>
-          <span class="step-title">Who's in the group?</span>
-        </div>
-        <div class="step-desc">You're added automatically. You can add more people later too.</div>
-        <div class="add-inline">
-          <input type="text" id="memberInput" placeholder="Type a name, e.g. Alex" maxlength="40">
-          <button type="button" class="btn-sage" id="memberAddBtn">Add</button>
-        </div>
-        <div class="chip-list" id="memberChips"></div>
 
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="splitSubmitBtn">Create split →</button>
@@ -167,14 +153,11 @@ if ("serviceWorker" in navigator) {
       <div class="ticket-inner">
         <div class="step-head">
           <span class="step-title">People</span>
-          <span class="step-desc-inline edit-only">tap a name to rename</span>
+          <span class="step-desc-inline edit-only">tap a person to edit</span>
           <button type="button" class="people-toggle view-only" id="peopleToggle" aria-pressed="false" title="Show names">👁 <span>Names</span></button>
         </div>
         <div class="chip-list" id="detailMembers"></div>
-        <div class="add-inline edit-only">
-          <input type="text" id="detailMemberInput" placeholder="Add someone to the group" maxlength="40">
-          <button type="button" class="btn-sage" id="detailMemberAddBtn">Add</button>
-        </div>
+        <button type="button" class="btn-sage add-person-btn edit-only" id="addPersonBtn">＋ Add person</button>
       </div>
     </section>
 
@@ -422,6 +405,30 @@ if ("serviceWorker" in navigator) {
       <button type="button" class="btn-primary" id="importConfirmBtn" disabled>Import</button>
     </div>
   </div>
+</div>
+
+<!-- ============ ADD / EDIT PERSON POPUP ============ -->
+<div class="sheet-backdrop" id="personSheet" hidden>
+  <form class="sheet sheet-sm person-sheet" id="personForm" autocomplete="off">
+    <div class="sheet-head">
+      <h3 id="personTitle">Add person</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field-label" for="personEmail">Email <span class="opt">optional</span></label>
+      <input type="email" id="personEmail" placeholder="friend@gmail.com" maxlength="120" inputmode="email" autocapitalize="off">
+      <div class="person-lookup" id="personLookup" hidden></div>
+      <div class="hint" id="personEmailHint">With an email, the split is shared with them. If they already use SplitEasy, their name and photo fill in.</div>
+      <div style="height:14px"></div>
+      <label class="field-label req" for="personName">Name</label>
+      <input type="text" id="personName" placeholder="e.g. Rahul" maxlength="40" required>
+    </div>
+    <div class="sheet-foot">
+      <span style="flex:1"></span>
+      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+      <button type="submit" class="btn-primary" id="personSaveBtn">Add person</button>
+    </div>
+  </form>
 </div>
 
 <!-- ============ PROFILE POPUP ============ -->

@@ -71,8 +71,11 @@
   }
 
   // Columns of a split row that the app edits directly (people go through RPCs).
+  // Each person's email lives in splits.people ({ "Rahul": { "email": "…" } }). Until that
+  // column exists in the database we quietly leave it out (emails then stay on this device).
+  let peopleColumn = true;
   function splitMetaToRow(s){
-    return {
+    const row = {
       name: s.name,
       type: s.type,
       currency: s.currency,
@@ -82,6 +85,16 @@
       pay_modes: s.payModes,
       updated_by: s.updatedBy
     };
+    if(peopleColumn) row.people = s.people || {};
+    return row;
+  }
+  async function writeSplit(run){
+    try{ return check(await run()); }
+    catch(err){
+      if(!peopleColumn || !/people/i.test(err.message)) throw err;
+      peopleColumn = false;
+      return check(await run());
+    }
   }
 
   function applySplitRow(target, r){
@@ -94,6 +107,7 @@
       geo: geoOf(r),
       members: r.members || [],
       payModes: r.pay_modes || [],
+      people: r.people || target.people || {},
       shareCode: r.share_code,
       createdBy: r.created_by_name,
       createdById: r.created_by,
@@ -141,16 +155,28 @@
     if(avatar) sb.from('profiles').update({ avatar_url: avatar }).eq('id', session.user.id).then(() => {});
     return { id: session.user.id, email: session.user.email, name, avatar };
   };
-  // Everyone with access to a split: [{ id, name, avatar }]. Falls back to names only if
+  // Everyone with access to a split: [{ id, name, email, avatar }]. Falls back to names only if
   // the avatar_url column hasn't been added to the database yet.
   Cloud.splitPeople = async function(s){
-    let res = await sb.from('split_members').select('user_id, profiles(display_name, avatar_url)').eq('split_id', s.id);
-    if(res.error) res = await sb.from('split_members').select('user_id, profiles(display_name)').eq('split_id', s.id);
+    let res = await sb.from('split_members').select('user_id, profiles(display_name, email, avatar_url)').eq('split_id', s.id);
+    if(res.error) res = await sb.from('split_members').select('user_id, profiles(display_name, email)').eq('split_id', s.id);
     return check(res).map(r => ({
       id: r.user_id,
       name: (r.profiles && r.profiles.display_name) || '',
+      email: ((r.profiles && r.profiles.email) || '').toLowerCase(),
       avatar: (r.profiles && r.profiles.avatar_url) || ''
     })).filter(p => p.name);
+  };
+  // { name, avatar } if someone has signed up with this email, null if not,
+  // undefined if the lookup function isn't in the database yet.
+  Cloud.findUser = async function(email){
+    const { data, error } = await sb.rpc('find_user_by_email', { p_email: email });
+    if(error){
+      if(/find_user_by_email|schema cache|does not exist/i.test(error.message)) return undefined;
+      throw new Error(error.message);
+    }
+    const row = Array.isArray(data) ? data[0] : data;
+    return row && row.display_name ? { name: row.display_name, avatar: row.avatar_url || '' } : null;
   };
   // Redirects to Google; comes back to this page with the session (new users are created automatically).
   Cloud.signInWithGoogle = async () => check(await sb.auth.signInWithOAuth({
@@ -179,12 +205,12 @@
     return r ? rowToSplit(r) : null;
   };
   Cloud.createSplit = async function(s){
-    check(await sb.from('splits').insert({
+    await writeSplit(() => sb.from('splits').insert({
       id: s.id, ...splitMetaToRow(s), members: s.members, created_by: Cloud.userId, created_by_name: s.createdBy
     }));
     return Cloud.loadSplit(s.id);
   };
-  Cloud.saveSplitMeta = async s => check(await sb.from('splits').update(splitMetaToRow(s)).eq('id', s.id));
+  Cloud.saveSplitMeta = async s => writeSplit(() => sb.from('splits').update(splitMetaToRow(s)).eq('id', s.id));
   Cloud.deleteSplit = async s => check(await sb.from('splits').delete().eq('id', s.id));
   Cloud.leaveSplit = async s => check(await sb.from('split_members').delete().eq('split_id', s.id).eq('user_id', Cloud.userId));
 
@@ -221,7 +247,7 @@
   // Copy a split saved on this device (or from an old share link) into the account.
   Cloud.uploadSplit = async function(local){
     const id = crypto.randomUUID();
-    check(await sb.from('splits').insert({
+    await writeSplit(() => sb.from('splits').insert({
       id,
       ...splitMetaToRow(local),
       members: local.members,
