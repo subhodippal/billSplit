@@ -147,38 +147,67 @@ function renderAuth(){
   if(user){
     area.innerHTML = `
       <div class="user-pill">
-        <button class="user-avatar" id="avatarBtn" title="Change your name">${user.avatar
-          ? `<img src="${escapeHtml(user.avatar)}" alt="" referrerpolicy="no-referrer" data-i="${escapeHtml(initials(user.name))}" onerror="this.replaceWith(this.dataset.i)">`
-          : escapeHtml(initials(user.name))}</button>
+        <button class="user-avatar" id="avatarBtn" title="Your profile" aria-label="Your profile">${avatarInner(user)}</button>
         <span class="user-name">${escapeHtml(user.name)}</span>
-        <button class="logout-btn" id="logoutBtn" title="Log out">⎋ Log out</button>
+        <button class="logout-btn" id="logoutBtn" title="Log out">Log out</button>
       </div>`;
-    $('avatarBtn').onclick = changeMyName;
-    $('logoutBtn').onclick = async () => {
-      const pending = CLOUD ? outbox.length : 0;
-      const msg = !CLOUD ? 'Log out? Your splits stay saved on this device.'
-        : pending ? `You have ${pending} change${pending > 1 ? 's' : ''} that haven’t synced yet — they’ll be lost if you log out now. Log out anyway?`
-        : 'Log out of SplitEasy on this device?';
-      if(!confirm(msg)) return;
-      if(CLOUD){
-        const id = user.id;
-        try{ await Cloud.signOut(); } catch(err){ toast(err.message); }
-        // Don't leave your account's offline copy behind on this device.
-        await Store.del('cache_' + id);
-        await Store.del('outbox_' + id);
-        await Store.del('last_user');
-        await onSignedOut();
-        return;
-      }
-      localStorage.removeItem(USER_KEY);
-      user = null;
-      renderAuth();
-      route();
-    };
+    $('avatarBtn').onclick = openProfile;
+    $('logoutBtn').onclick = logOut;
   } else {
     area.innerHTML = `<button class="btn-primary btn-small" id="loginBtn">Log in</button>`;
     $('loginBtn').onclick = () => openLogin();
   }
+}
+
+// Photo if we have one, else initials (also if the photo fails to load).
+function avatarInner(u){
+  return u.avatar
+    ? `<img src="${escapeHtml(u.avatar)}" alt="" referrerpolicy="no-referrer" data-i="${escapeHtml(initials(u.name))}" onerror="this.replaceWith(this.dataset.i)">`
+    : escapeHtml(initials(u.name));
+}
+
+function openProfile(){
+  if(!user) return;
+  $('profileAvatar').innerHTML = avatarInner(user);
+  $('profileName').textContent = user.name;
+  $('profileEmail').textContent = user.email || '';
+  $('profileEmail').hidden = !user.email;
+  const count = Object.keys(splits).length;
+  $('profileMeta').textContent = (CLOUD ? 'Signed in with Google' : 'Saved on this device') +
+    ` · ${count} split${count === 1 ? '' : 's'}`;
+  openSheet('profileSheet');
+}
+$('profileRenameBtn').onclick = async () => {
+  await changeMyName();
+  if(!$('profileSheet').hidden) openProfile();   // show the new name
+};
+$('profileLogoutBtn').onclick = () => { closeSheet('profileSheet'); logOut(); };
+
+async function logOut(){
+  const pending = CLOUD ? outbox.length : 0;
+  const ok = await confirmDialog({
+    icon: '👋',
+    title: 'Log out?',
+    message: !CLOUD ? 'Your splits stay saved on this device.'
+      : pending ? `You have <strong>${pending} change${pending > 1 ? 's' : ''}</strong> that haven’t synced yet — they’ll be lost if you log out now.`
+      : 'You can log back in with Google any time — your splits are saved in your account.',
+    confirmLabel: 'Log out'
+  });
+  if(!ok) return;
+  if(CLOUD){
+    const id = user.id;
+    try{ await Cloud.signOut(); } catch(err){ toast(err.message); }
+    // Don't leave your account's offline copy behind on this device.
+    await Store.del('cache_' + id);
+    await Store.del('outbox_' + id);
+    await Store.del('last_user');
+    await onSignedOut();
+    return;
+  }
+  localStorage.removeItem(USER_KEY);
+  user = null;
+  renderAuth();
+  route();
 }
 
 async function changeMyName(){
@@ -314,6 +343,7 @@ function showView(name, keepScroll){
   currentView = name;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   document.querySelector('footer.foot').hidden = name !== 'home';
+  document.body.classList.toggle('on-home', name === 'home');
   // Header back button goes one level up: split -> all splits -> home.
   const up = { splits: '#/', split: '#/splits', import: '#/',
     new: editingSplitId ? `#/split/${encodeURIComponent(editingSplitId)}` : '#/' }[name];
@@ -351,6 +381,7 @@ function renderLoading(){
 function renderHome(){
   const count = Object.keys(splits).length;
   $('homeGreeting').textContent = user ? `Hey ${user.name}, split it fairly.` : 'Split every bill, fairly.';
+  $('homeHello').textContent = user ? `Hey ${user.name.split(' ')[0]} 👋` : 'Hey there 👋';
   $('homeSplitCount').textContent = count ? `${count} split${count > 1 ? 's' : ''} saved →` : 'Nothing yet — create your first one';
   showView('home');
 }
@@ -400,7 +431,6 @@ function renderSplitList(keepScroll){
       const leaving = !localMode() && s.role !== 'owner';
       return `<a class="split-card ${fav ? 'is-fav' : ''}" href="#/split/${encodeURIComponent(s.id)}">
         <div class="split-card-top">
-          <span class="tag">${escapeHtml(s.type)}</span>
           <span class="hint" style="margin:0;">${s.collaborators > 1 ? `👥 shared · ` : ''}${formatDay(s.createdAt)}</span>
           <span class="card-actions">
             <button type="button" class="card-btn fav-btn ${fav ? 'on' : ''}" data-fav="${s.id}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
@@ -430,7 +460,6 @@ function renderSplitForm(splitId){
   $('newTitle').textContent = s ? 'Edit details' : 'New split';
   $('splitSubmitBtn').textContent = s ? 'Save changes' : 'Create split →';
   $('splitName').value = s ? s.name : '';
-  $('splitType').value = s ? s.type : 'Travel';
   $('splitLocation').value = s ? (s.location || '') : '';
   draftGeo = s ? s.geo : null;
   renderGeoInfo('splitGeoInfo', draftGeo);
@@ -482,7 +511,7 @@ $('splitForm').addEventListener('submit', async (e) => {
   if(editingSplitId){
     const s = getSplit(editingSplitId);
     Object.assign(s, {
-      name, type: $('splitType').value,
+      name,
       location: $('splitLocation').value.trim(), geo: draftGeo
     });
     touch(s);
@@ -496,7 +525,7 @@ $('splitForm').addEventListener('submit', async (e) => {
   const s = {
     id: newId('s'),
     name,
-    type: $('splitType').value,
+    type: 'Other',   // splits no longer have a type; the column just needs a value
     currency: DEFAULT_CURRENCY,
     location: $('splitLocation').value.trim(),
     geo: draftGeo,
@@ -552,7 +581,6 @@ function renderSplitDetail(id, keepScroll){
   $('detailName').textContent = s.name;
   // Travel | 6 Oct 2026 | 4 people | 📍 Purulia, West Bengal
   const meta = [
-    `<span class="meta-type">${escapeHtml(s.type)}</span>`,
     `<span>${formatDay(s.createdAt)}</span>`,
     `<span>${s.members.length} ${s.members.length === 1 ? 'person' : 'people'}</span>`
   ];
@@ -563,8 +591,6 @@ function renderSplitDetail(id, keepScroll){
   } else if(s.geo){
     meta.push(`<a href="${mapUrl(s.geo)}" target="_blank" rel="noopener">📍 ${s.geo.lat.toFixed(4)}, ${s.geo.lng.toFixed(4)}</a>`);
   }
-  if(CLOUD && s.collaborators > 1) meta.push(`<span>🔗 Shared with ${s.collaborators - 1}</span>`);
-  meta.push(`<span class="live-dot" id="liveDot" title="Live — updates from your group appear instantly" ${CLOUD && liveStatus === 'SUBSCRIBED' ? '' : 'hidden'}>● LIVE</span>`);
   $('detailMeta').innerHTML = meta.join('');
   renderMembers();
   renderEntries();
@@ -598,8 +624,10 @@ let splitAvatars = {};   // lower-cased name -> photo URL, for the open split
 async function loadAvatars(s){
   splitAvatars = {};
   if(!CLOUD || !user) return;
-  try{ splitAvatars = await Cloud.splitAvatars(s); }
+  let people;
+  try{ people = await Cloud.splitPeople(s); }
   catch(_){ return; }   // photos are a nice-to-have
+  people.forEach(p => { if(p.avatar) splitAvatars[p.name.toLowerCase()] = p.avatar; });
   if(currentSplitId === s.id && currentView === 'split'){ renderMembers(); renderEntries(); }
 }
 
@@ -1163,7 +1191,7 @@ async function renderImport(payload){
   const existing = CLOUD ? null : getSplit(incoming.id);
   const n = incoming.entries.filter(e => !e.deleted).length;
   box.innerHTML = `
-    <div class="split-hero-type" style="color:var(--sage)">Shared ${escapeHtml(incoming.type || '')} split</div>
+    <div class="split-hero-type" style="color:var(--sage)">Shared split</div>
     <div class="step-title" style="font-size:28px;">${escapeHtml(incoming.name)}</div>
     <p class="hint" style="font-size:13.5px;">
       From ${escapeHtml(incoming.updatedBy || incoming.createdBy || 'someone')} · ${incoming.members.length} people · ${n} entr${n === 1 ? 'y' : 'ies'}
@@ -1552,7 +1580,6 @@ const liveHandlers = {
   },
   status(st){
     liveStatus = st;
-    if(currentView === 'split' && $('liveDot')) $('liveDot').hidden = st !== 'SUBSCRIBED';
   }
 };
 

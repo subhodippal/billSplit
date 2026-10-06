@@ -85,7 +85,6 @@ function reportHtml(s){
 
   return `<div class="rp">
     <div class="rp-top"><span class="rp-brand">💸 SplitEasy</span><span>Exported ${formatStamp(Date.now())}</span></div>
-    <div class="rp-type">${escapeHtml(s.type)} split</div>
     <h1>${escapeHtml(s.name)}</h1>
     <div class="rp-meta">${meta}</div>
     <div class="rp-stats rp-break">

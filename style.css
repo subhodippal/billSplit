@@ -784,7 +784,7 @@ body.no-scroll{ overflow:hidden; }
 }
 
 /* ---------- Split list: favourite + delete ---------- */
-.split-card-top .hint{ margin-right: auto !important; margin-left: 8px !important; }
+.split-card-top .hint{ margin-right: auto !important; margin-left: 0 !important; }
 .card-actions{ display:flex; gap: 2px; margin: -6px -8px -6px 0; }
 .card-btn{
   background: none; border: none; min-height: 0; padding: 6px 8px; border-radius: 8px;
@@ -834,4 +834,187 @@ body.no-scroll{ overflow:hidden; }
     text-align:center; overflow-wrap:anywhere; cursor: default;
   }
   #view-split:not(.editing) .people-card.names-open .p-avatar{ box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--line); }
+}
+
+/* ---------- Back button (SVG chevron renders the same on every phone) ---------- */
+.top-back svg{ display:block; margin-left: -2px; }
+
+@media (max-width: 600px){
+  .top-back{ width: 34px; height: 34px; }
+  .top-back svg{ width: 19px; height: 19px; }
+
+  /* ---------- Home fits the screen: no scrolling ---------- */
+  body.on-home{ height: 100vh; height: 100dvh; overflow: hidden; }
+  /* main area: two items pushed apart — [tagline, title, cards] at the top, footer at the bottom */
+  body.on-home .wrap{
+    flex: 1; min-height: 0; display:flex; flex-direction:column; justify-content:space-between;
+    padding-top: 30px; padding-bottom: calc(30px + env(safe-area-inset-bottom));
+  }
+  body.on-home #view-home.active{ flex: 0 0 auto; }
+  body.on-home .hero{ margin: 0 0 clamp(16px, 4.5vh, 38px); }
+  body.on-home .eyebrow{ margin-bottom: clamp(12px, 3vh, 24px); }
+  body.on-home .home-cards{ gap: clamp(10px, 2vh, 14px); }
+  body.on-home .home-card{ padding-top: clamp(14px, 2.8vh, 22px); padding-bottom: clamp(14px, 2.8vh, 22px); }
+  /* footer sits a little above the bottom edge */
+  body.on-home footer.foot{ margin-top: 0; padding: 12px 0 0; }
+  body.on-home .foot-links{ margin-top: 10px; }
+
+  /* ---------- Bigger text: entries ---------- */
+  .entry-table td.c-purpose{ font-size: 15px; }
+  .entry-table td.c-amount{ font-size: 16px; }
+  .entry-table td.c-meta{ font-size: 13px; }
+  .c-meta .m-when{ font-size: 12px; }
+  .c-meta > span + span::before{ font-size: 13px; }
+  .entry-table td.c-split{ font-size: 13.5px; }
+  .entry-table td.c-split .excl-note{ font-size: 12.5px; }
+  .note-btn{ font-size: 14px; }
+  .totals-strip{ font-size: 14px; }
+
+  /* ---------- Bigger text: settle up ---------- */
+  .stat-label{ font-size: 10px; }
+  .stat-value{ font-size: 19px; }
+  .person-name{ font-size: 15.5px; }
+  .person-sub{ font-size: 13px; }
+  .person-bal small{ font-size: 11px; }
+  .person-bal b{ font-size: 16px; }
+  .settle-row{ font-size: 15px; }
+  .settle-row .amt{ font-size: 15.5px; }
+  .section-label{ font-size: 12px; }
+}
+
+/* ================= PHONES: everything a little larger =================
+   Kept last so it wins over the earlier phone rules. */
+@media (max-width: 600px){
+  /* header */
+  .brand-name{ font-size: 18.5px; }
+  .brand-mark{ font-size: 21px; }
+  .topbar .btn-small{ font-size: 13px; min-height: 32px; padding: 5px 12px; }
+  .top-back{ width: 36px; height: 36px; }
+  .top-back svg{ width: 21px; height: 21px; }
+  .user-avatar{ width: 28px; height: 28px; font-size: 12px; }
+  .logout-btn{ font-size: 12.5px; }
+  .statusbar{ font-size: 12.5px; padding: 4px 10px; }
+
+  /* home */
+  h1.title{ font-size: 32px; }
+  .eyebrow{ font-size: 9.5px; }
+  .home-card-icon{ width: 42px; height: 42px; font-size: 21px; }
+  .home-card-title{ font-size: 21px; }
+  .home-card-desc{ font-size: 14px; }
+  .home-card-meta{ font-size: 12px; }
+  footer.foot{ font-size: 13px; }
+
+  /* page titles, cards, sections */
+  .view-title{ font-size: 24px; }
+  .step-title{ font-size: 23px; }
+  .step-desc, .step-desc-inline{ font-size: 14px; }
+  .step-num{ font-size: 12.5px; }
+  .hint{ font-size: 13px; }
+  .section-label{ font-size: 12.5px; }
+
+  /* splits list */
+  .split-card-name{ font-size: 22.5px; }
+  .split-card-loc, .split-card-foot{ font-size: 14px; }
+  .split-card-total{ font-size: 17px; }
+  .tag{ font-size: 11.5px; }
+  .card-btn{ font-size: 19px; }
+  .del-btn{ font-size: 17px; }
+
+  /* split page */
+  .split-hero-title{ font-size: 29px; }
+  .split-hero-meta{ font-size: 13.5px; }
+  .split-hero-row .btn-small{ font-size: 13.5px; min-height: 34px; padding: 6px 12px; }
+  .title-edit{ width: 30px; height: 30px; font-size: 15px; }
+  .people-card .step-title{ font-size: 20px; }
+  #view-split:not(.editing) .people-card .p-avatar{ width: 33px; height: 33px; font-size: 14px; }
+  #view-split:not(.editing) .people-card.names-open .person-chip .chip-name{ font-size: 12px; }
+  #view-split:not(.editing) .people-toggle{ font-size: 13px; }
+  .chip, .chip .chip-name{ font-size: 14.5px; }
+  .entries-actions .btn-ghost, .entries-actions .btn-primary{ font-size: 14px; }
+  .entry-table td.c-purpose{ font-size: 16px; }
+  .entry-table td.c-amount{ font-size: 17px; }
+  #view-split .entry-table td.c-purpose .p-avatar{ width: 26px; height: 26px; font-size: 12px; }
+  .entry-table td.c-meta{ font-size: 13.5px; }
+  .c-meta .m-when{ font-size: 12.5px; }
+  .entry-table td.c-split{ font-size: 14px; }
+  .entry-table td.c-split .excl-note{ font-size: 13px; }
+  .note-btn{ font-size: 15px; padding: 4px 8px; }
+  .entry-table td.cell-actions .btn-icon{ font-size: 15px; }
+  .totals-strip{ font-size: 14.5px; }
+  .stat-label{ font-size: 10.5px; }
+  .stat-value{ font-size: 20px; }
+  .person-name{ font-size: 16px; }
+  .person-sub{ font-size: 13.5px; }
+  .person-bal small{ font-size: 11.5px; }
+  .person-bal b{ font-size: 16.5px; }
+  .settle-row{ font-size: 15.5px; }
+  .settle-row .amt{ font-size: 16px; }
+
+  /* forms & buttons (16px inputs also stop iPhone zooming in on tap) */
+  label.field-label{ font-size: 12px; }
+  label.field-label .opt{ font-size: 12px; }
+  input[type=text], input[type=number], input[type=email], input[type=datetime-local], select, textarea{ font-size: 16px; }
+  .amount-field input{ font-size: 18px; }
+  button{ font-size: 15px; }
+  .btn-small{ font-size: 13.5px; }
+  .btn-icon{ font-size: 17px; }
+  .btn-link-text{ font-size: 13.5px; }
+  .split-pill{ font-size: 14.5px; }
+  .geo-btn{ font-size: 14.5px; }
+
+  /* popups, toasts, suggestions */
+  .sheet-head h3{ font-size: 23px; }
+  .confirm-sheet h3{ font-size: 23px; }
+  .confirm-sheet p, .login-lead{ font-size: 15px; }
+  .export-opt strong{ font-size: 16px; }
+  .export-opt small{ font-size: 13.5px; }
+  .export-ico{ font-size: 28px; }
+  .google-btn{ font-size: 16.5px; }
+  .place-item{ font-size: 15px; }
+  .place-item small{ font-size: 13px; }
+  .toast{ font-size: 15px; }
+  .purpose-wrap.open::after, .note-btn.open::after, .person-chip.tip::after{ font-size: 14px; }
+}
+@media (max-width: 600px){
+  /* trip details stay on one line; the last part (location) gets "…" */
+  .split-hero-meta{ flex-wrap: nowrap; min-width: 0; }
+  .split-hero-meta > *{ flex: 0 0 auto; white-space: nowrap; }
+  .split-hero-meta > :last-child:not(:first-child){ flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  /* "TOTAL SPENT" fits the narrow stat box */
+  .stat-label{ font-size: 10px; letter-spacing: 0; }
+}
+
+/* ---------- Profile popup ---------- */
+.profile-sheet .sheet-body{ text-align: center; padding: 6px 22px 24px; padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+.profile-avatar{
+  width: 88px; height: 88px; margin: 4px auto 14px; border-radius: 50%; overflow: hidden;
+  display:flex; align-items:center; justify-content:center;
+  background: var(--gold); color: var(--ink); font-weight: 700; font-size: 32px;
+  box-shadow: 0 0 0 4px var(--paper), 0 0 0 6px rgba(232,169,59,0.5);
+}
+.profile-avatar img{ width:100%; height:100%; object-fit: cover; display:block; }
+.profile-name{ font-family:'Fraunces',serif; font-weight:600; font-size: 24px; line-height: 1.2; overflow-wrap:anywhere; }
+.profile-email{ color: var(--ink-soft); font-size: 14.5px; margin-top: 4px; overflow-wrap:anywhere; }
+.profile-meta{
+  display:inline-block; margin-top: 12px; padding: 4px 12px; border-radius: 20px;
+  background: var(--sage-bg); color: var(--sage); font-size: 12.5px; font-weight: 600;
+}
+.profile-actions{ display:flex; gap: 10px; margin-top: 22px; }
+.profile-actions button{ flex: 1; }
+.confirm-icon{ font-weight: 700; }
+
+/* ---------- Tagline a bit larger ---------- */
+.eyebrow{ font-size: 12px; }
+@media (max-width: 600px){ .eyebrow{ font-size: 10.5px; } }
+.profile-actions button{ white-space: nowrap; padding-left: 10px; padding-right: 10px; }
+
+/* ---------- Home hero: 3 lines on phones, 2 on desktop ---------- */
+.hero-hello, .title-mobile{ display:none; }
+@media (max-width: 600px){
+  .hero-hello{
+    display:block; font-family:'Fraunces',serif; font-weight:600; font-size: 24px;
+    color: var(--paper); margin-bottom: clamp(10px, 2.2vh, 16px);
+  }
+  .title-desktop{ display:none; }
+  .title-mobile{ display:inline; }
 }

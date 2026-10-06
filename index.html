@@ -47,7 +47,7 @@ if ("serviceWorker" in navigator) {
 <!-- ============ HEADER ============ -->
 <header class="topbar">
   <div class="topbar-inner">
-    <a href="#/" class="top-back" id="topBack" aria-label="Back" hidden>←</a>
+    <a href="#/" class="top-back" id="topBack" aria-label="Back" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
     <a href="#/" class="brand" aria-label="SplitEasy home">
       <span class="brand-mark">💸</span>
       <span class="brand-name">SplitEasy</span>
@@ -65,8 +65,10 @@ if ("serviceWorker" in navigator) {
   <!-- ============ HOME ============ -->
   <section class="view" id="view-home">
     <div class="hero">
+      <!-- phones: 3 lines (hello / tagline / title); desktop: tagline + title as before -->
+      <div class="hero-hello" id="homeHello">Hey there 👋</div>
       <div class="eyebrow">✈︎ • TRAVEL • PARTY • SPLIT • REPEAT • ✈︎</div>
-      <h1 class="title" id="homeGreeting">Split every bill, fairly.</h1>
+      <h1 class="title"><span class="title-desktop" id="homeGreeting">Split every bill, fairly.</span><span class="title-mobile">Split every bill, fairly.</span></h1>
     </div>
 
     <div class="home-cards">
@@ -113,17 +115,6 @@ if ("serviceWorker" in navigator) {
           <div class="span-2">
             <label class="field-label req" for="splitName">Name</label>
             <input type="text" id="splitName" placeholder="e.g. Goa trip 2026, Rohan's birthday" required maxlength="80">
-          </div>
-          <div class="span-2">
-            <label class="field-label req" for="splitType">Purpose</label>
-            <select id="splitType">
-              <option>Travel</option>
-              <option>Party</option>
-              <option>Dinner</option>
-              <option>Home / Flat</option>
-              <option>Event</option>
-              <option>Other</option>
-            </select>
           </div>
           <div class="span-2">
             <label class="field-label" for="splitLocation">Location <span class="opt">optional</span></label>
@@ -429,6 +420,26 @@ if ("serviceWorker" in navigator) {
       <span style="flex:1"></span>
       <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
       <button type="button" class="btn-primary" id="importConfirmBtn" disabled>Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PROFILE POPUP ============ -->
+<div class="sheet-backdrop" id="profileSheet" hidden>
+  <div class="sheet sheet-sm profile-sheet">
+    <div class="sheet-head">
+      <h3>Your profile</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="profile-avatar" id="profileAvatar"></div>
+      <div class="profile-name" id="profileName"></div>
+      <div class="profile-email" id="profileEmail"></div>
+      <div class="profile-meta" id="profileMeta"></div>
+      <div class="profile-actions">
+        <button type="button" class="btn-ghost" id="profileRenameBtn">✎ Change name</button>
+        <button type="button" class="btn-ghost danger" id="profileLogoutBtn">Log out</button>
+      </div>
     </div>
   </div>
 </div>

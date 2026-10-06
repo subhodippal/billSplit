@@ -141,15 +141,16 @@
     if(avatar) sb.from('profiles').update({ avatar_url: avatar }).eq('id', session.user.id).then(() => {});
     return { id: session.user.id, email: session.user.email, name, avatar };
   };
-  // Photos of everyone with access to a split, keyed by lower-cased display name.
-  Cloud.splitAvatars = async function(s){
-    const rows = check(await sb.from('split_members').select('profiles(display_name, avatar_url)').eq('split_id', s.id));
-    const out = {};
-    rows.forEach(r => {
-      const p = r.profiles;
-      if(p && p.display_name && p.avatar_url) out[p.display_name.toLowerCase()] = p.avatar_url;
-    });
-    return out;
+  // Everyone with access to a split: [{ id, name, avatar }]. Falls back to names only if
+  // the avatar_url column hasn't been added to the database yet.
+  Cloud.splitPeople = async function(s){
+    let res = await sb.from('split_members').select('user_id, profiles(display_name, avatar_url)').eq('split_id', s.id);
+    if(res.error) res = await sb.from('split_members').select('user_id, profiles(display_name)').eq('split_id', s.id);
+    return check(res).map(r => ({
+      id: r.user_id,
+      name: (r.profiles && r.profiles.display_name) || '',
+      avatar: (r.profiles && r.profiles.avatar_url) || ''
+    })).filter(p => p.name);
   };
   // Redirects to Google; comes back to this page with the session (new users are created automatically).
   Cloud.signInWithGoogle = async () => check(await sb.auth.signInWithOAuth({
