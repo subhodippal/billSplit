@@ -947,7 +947,8 @@ function openEntrySheet(entryId){
   $('eAddedBy').innerHTML = en
     ? `Added by <strong>${escapeHtml(en.addedBy || '—')}</strong> · ${formatStamp(en.createdAt)}` +
       (en.updatedBy && en.updatedAt !== en.createdAt ? ` &nbsp;·&nbsp; last edited by <strong>${escapeHtml(en.updatedBy)}</strong> · ${formatStamp(en.updatedAt)}` : '')
-    : `Will be added by <strong>${escapeHtml(me())}</strong>. Paying on behalf of someone? Just change <em>Paid by</em>.`;
+    : '';
+  $('eAddedBy').hidden = !en;   // only shown when editing an existing entry
 
   openSheet('entrySheet');
   if(!en) setTimeout(() => $('eAmount').focus(), 60);
@@ -960,9 +961,6 @@ function setSign(sign){
   btn.textContent = minus ? '−' : '+';
   btn.className = 'sign-toggle ' + (minus ? 'minus' : 'plus');
   $('eAmount').parentElement.className = 'amount-field ' + (minus ? 'minus' : 'plus');
-  $('eSignHint').textContent = minus
-    ? 'Expense (deducted). Tap − to switch to + for money received / refunds.'
-    : 'Money received (refund, deposit back, collected cash). Tap + to switch back to an expense.';
 }
 $('eSign').onclick = () => setSign(-entrySign);
 
@@ -1042,7 +1040,6 @@ function setAllPills(on){
   updateSplitCount();
 }
 $('eSplitAll').onclick = () => setAllPills(true);
-$('eSplitNone').onclick = () => setAllPills(false);
 
 $('eDeleteBtn').onclick = () => deleteEntry(editingEntryId);
 

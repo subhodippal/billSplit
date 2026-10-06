@@ -194,6 +194,8 @@ const IMPORT_FIELDS = {
 };
 const ORDER_WITH_DATE = ['date', 'purpose', 'amount', 'paidBy', 'split', 'payVia', 'note'];
 const ORDER_NO_DATE = ['purpose', 'amount', 'paidBy', 'split', 'payVia', 'note'];
+// The simple everyday format: "2000, Hotel, Subhodip, UPI" (split with everyone).
+const ORDER_AMOUNT_FIRST = ['amount', 'purpose', 'paidBy', 'payVia', 'note'];
 let importRows = [];
 let importTimer;
 
@@ -234,17 +236,24 @@ $('importFile').addEventListener('change', async function(){
 });
 
 $('importTemplateBtn').onclick = () => {
+  // Same layout as typing it in: a date line, then "amount, purpose, paid by, pay via".
+  const names = cur().members.map(m => m.split(' ')[0]);
+  const a = names[0] || 'Me', b = names[1] || a;
   const csv = '\uFEFF' + [
-    'Date,Purpose,Amount,Paid by,Split with,Pay via,Note',
-    `${todayDMY()} 20:30,Dinner,1200,${me()},all,UPI,`,
-    `${todayDMY()} 09:15,Taxi,600,${me()},${me()}; Alex,Cash,to the airport`,
-    `${todayDMY()},Deposit refund,+2000,${me()},all,Bank transfer,money received`
+    todayDMY(),
+    `2000,Hotel,${a},UPI`,
+    `1000,Lunch,${b},Cash`,
+    '',
+    todayDMY(1),
+    `1500,Train tickets,${a},UPI`,
+    `+400,Deposit refund,${b},UPI`
   ].join('\r\n');
   saveFile(new Blob([csv], { type: 'text/csv' }), 'spliteasy-import-template.csv');
 };
 
-function todayDMY(){
+function todayDMY(plusDays){
   const d = new Date();
+  d.setDate(d.getDate() + (plusDays || 0));
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
@@ -295,18 +304,25 @@ function previewImport(rows){
   if(!rows.length){ $('importPreview').innerHTML = ''; updateImportButton(); return; }
   let map = headerMap(rows[0].map(cellToText));
   const body = map ? rows.slice(1) : rows;
-  importRows = body.map(r => {
+  // A date on a line of its own applies to the rows below it:
+  //   06/10/2026
+  //   2000, Hotel, Subhodip, UPI
+  let groupDate = '';
+  importRows = [];
+  for(const r of body){
     const cells = r.map(v => v instanceof Date || typeof v === 'number' ? v : cellToText(v));
+    const filled = cells.filter(c => String(c).trim() !== '');
+    if(!map && filled.length === 1 && parseImportDate(filled[0])){ groupDate = filled[0]; continue; }
     let m = map;
     if(!m){
-      const order = parseImportDate(cells[0]) ? ORDER_WITH_DATE : ORDER_NO_DATE;
+      const amountFirst = parseAmount(cells[0]) !== null && !parseImportDate(cells[0]);
+      const order = amountFirst ? ORDER_AMOUNT_FIRST : parseImportDate(cells[0]) ? ORDER_WITH_DATE : ORDER_NO_DATE;
       m = {};
       order.forEach((f, i) => { m[f] = i; });
-      // "1200, Dinner" -> swap if the amount came first
-      if(parseAmount(cells[m.amount]) === null && parseAmount(cells[m.purpose]) !== null){ const t = m.amount; m.amount = m.purpose; m.purpose = t; }
     }
-    return toEntryDraft(s, field => (m[field] === undefined ? '' : cells[m[field]] ?? ''));
-  });
+    importRows.push(toEntryDraft(s, field =>
+      m[field] === undefined ? (field === 'date' ? groupDate : '') : (cells[m[field]] ?? '')));
+  }
   // "all" means everyone — including people this import adds to the group.
   const newcomers = dedupe(importRows.flatMap(r => [r.paidBy, ...(r.splitAll ? [] : r.splitAmong)])).filter(n => !hasName(s.members, n));
   importRows.forEach(r => { if(r.splitAll) r.splitAmong = dedupe(s.members.concat(newcomers)); });
@@ -362,7 +378,14 @@ function matchName(s, raw){
   const name = cleanName(raw);
   if(!name) return '';
   if(/^(me|you|myself)$/i.test(name)) return me();
-  return s.members.find(m => m.toLowerCase() === name.toLowerCase()) || name;
+  const lower = name.toLowerCase();
+  const exact = s.members.find(m => m.toLowerCase() === lower);
+  if(exact) return exact;
+  // "subhodip" -> "Subhodip Pal" when exactly one person has that first name.
+  const byFirst = s.members.filter(m => m.toLowerCase().split(' ')[0] === lower);
+  if(byFirst.length === 1) return byFirst[0];
+  // Someone new: tidy the capitals ("akshay" -> "Akshay").
+  return name.replace(/\b\p{L}/gu, ch => ch.toUpperCase());
 }
 
 function toEntryDraft(s, get){

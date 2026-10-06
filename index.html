@@ -248,7 +248,7 @@ if ("serviceWorker" in navigator) {
             <button type="button" class="sign-toggle minus" id="eSign" title="Tap to switch between paid out (−) and received (+)">−</button>
             <input type="number" id="eAmount" placeholder="0" min="0" step="0.01" inputmode="decimal" required>
           </div>
-          <div class="hint" id="eSignHint">Expense (deducted). Tap − to switch to + for money received / refunds.</div>
+          <div class="hint" id="eSignHint">− for expenses, + for money received / refunds</div>
         </div>
         <div class="span-2">
           <label class="field-label req" for="ePurpose">Purpose</label>
@@ -265,14 +265,13 @@ if ("serviceWorker" in navigator) {
         </div>
         <div class="span-2">
           <label class="field-label" for="eNote">Note <span class="opt">optional</span></label>
-          <input type="text" id="eNote" placeholder="e.g. Alex & Max brought their own food" maxlength="200">
+          <input type="text" id="eNote" placeholder="Anything…" maxlength="200">
         </div>
         <div class="span-2">
           <div class="split-label-row">
             <label class="field-label req" style="margin:0;">Split with <span id="eSplitCount"></span></label>
             <span>
-              <button type="button" class="btn-link-text" id="eSplitAll">All</button> ·
-              <button type="button" class="btn-link-text" id="eSplitNone">None</button>
+              <button type="button" class="btn-link-text" id="eSplitAll">All</button>
             </span>
           </div>
           <div class="hint" style="margin:2px 0 8px;">Shared with everyone by default — tap a name to exclude them from this item.</div>
@@ -388,11 +387,16 @@ if ("serviceWorker" in navigator) {
     <div class="sheet-body">
       <p class="hint" style="margin-top:0;">Paste rows copied from Excel / Google Sheets, type one entry per line, or upload a file.</p>
       <div class="import-format">
-        <div class="field-label" style="margin:0 0 4px;">Columns (in this order, or use a header row)</div>
-        <code>Date, Purpose, Amount, Paid by, Split with, Pay via, Note</code>
-        <div class="hint">Only <strong>Purpose</strong> and <strong>Amount</strong> are needed — e.g. <code>Dinner, 1200</code>. Empty date = now, empty Paid by = you, empty Split with = everyone. Separate names with <code>;</code> and write <code>+500</code> for money received.</div>
+        <div class="field-label" style="margin:0 0 4px;">Write a date, then one expense per line</div>
+        <pre class="import-example">06/10/2026
+2000, Hotel, Subhodip, UPI
+1000, Lunch, Akshay, Cash
+
+07/10/2026
+1500, Train tickets, Subhodip, UPI</pre>
+        <div class="hint"><strong>amount, purpose, paid by, pay via</strong> — split with everyone. First names are enough. Pay via is optional; write <code>+500</code> for money received. Excel / CSV files with a header row work too.</div>
       </div>
-      <textarea id="importText" rows="6" spellcheck="false" placeholder="06/10/2026, Hotel, 4500, Alex, all, UPI&#10;Dinner, 1200&#10;Taxi, 600, Me, Me; Alex"></textarea>
+      <textarea id="importText" rows="6" spellcheck="false" placeholder="06/10/2026&#10;2000, Hotel, Subhodip, UPI&#10;1000, Lunch, Akshay, Cash"></textarea>
       <div class="import-tools">
         <label class="btn-ghost btn-small file-btn">📄 Choose Excel / CSV file<input type="file" id="importFile" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden></label>
         <button type="button" class="btn-link-text" id="importTemplateBtn">Download template</button>

@@ -1031,3 +1031,7 @@ body.no-scroll{ overflow:hidden; }
 .person-lookup.missing{ background: rgba(232,169,59,0.16); color: var(--ink); }
 .person-lookup .p-avatar{ width: 34px; height: 34px; font-size: 14px; background: var(--sage); color: #fff; }
 #view-split.editing .person-chip{ cursor: pointer; }
+.import-example{
+  margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(27,36,32,0.06);
+  font-family:'IBM Plex Mono',monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap;
+}
