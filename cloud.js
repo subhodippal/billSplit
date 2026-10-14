@@ -17,6 +17,7 @@
   if(!Cloud.enabled) return;
 
   const sb = Cloud.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    db: { schema: 'billsplit' }, // OneDB: this app's tables live in the "billsplit" schema
     auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' }
   });
 
@@ -269,15 +270,15 @@
   Cloud.subscribe = async function(h){
     if(channel){ const old = channel; channel = null; await sb.removeChannel(old); }
     channel = sb.channel('spliteasy-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, p => {
+      .on('postgres_changes', { event: '*', schema: 'billsplit', table: 'entries' }, p => {
         if(p.eventType === 'DELETE') h.entryDeleted(p.old.id);
         else h.entryChanged(rowToEntry(p.new));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'splits' }, p => {
+      .on('postgres_changes', { event: '*', schema: 'billsplit', table: 'splits' }, p => {
         if(p.eventType === 'DELETE') h.splitDeleted(p.old.id);
         else h.splitChanged(p.new.id, row => applySplitRow(row, p.new));
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'split_members' }, p => {
+      .on('postgres_changes', { event: '*', schema: 'billsplit', table: 'split_members' }, p => {
         h.accessChanged(p.eventType, p.new && p.new.split_id ? p.new : p.old);
       })
       .subscribe(status => h.status && h.status(status));

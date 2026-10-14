@@ -16,9 +16,10 @@ Live: https://subhodippal.github.io/billSplit/
 
 ## Set up Supabase (about 5 minutes)
 
-1. **Create a project** at [supabase.com](https://supabase.com). The free tier is plenty.
-2. **Create the database.** Open **SQL Editor → New query**, paste all of [`supabase/schema.sql`](supabase/schema.sql), and click **Run**.
+1. **Use the OneDB project.** SplitEasy shares one Supabase project with my other apps (see `OneDB/README.md` in the parent folder). Its tables live in the `billsplit` schema; people's profiles are shared in `public.profiles`.
+2. **Create the database.** Open **SQL Editor → New query**. Run `OneDB/platform.sql` first, then paste all of [`supabase/schema.sql`](supabase/schema.sql) and click **Run**.
    It creates the tables, row-level security rules, sharing functions and realtime. It's safe to run again after updates.
+   Then add `billsplit` under **Project Settings → Data API → Exposed schemas**.
 3. **Allow your site to log in.** Under **Authentication → URL Configuration**:
    - **Site URL:** `https://subhodippal.github.io/billSplit/`
    - **Redirect URLs:** add `https://subhodippal.github.io/billSplit/` (and `http://localhost:8000/` if you test locally).
