@@ -66,14 +66,6 @@ a{ color: inherit; }
   display:flex; align-items:center; justify-content:center;
   font-weight:700; font-size:13px;
 }
-.logout-btn{
-  background: rgba(244,239,225,0.08); color: rgba(244,239,225,0.85);
-  border: none; border-radius: 30px;
-  padding: 6px 14px; min-height: 30px; font-size: 12.5px; font-weight: 600;
-  transition: background .15s ease, color .15s ease;
-}
-.logout-btn:hover{ background: rgba(181,74,61,0.22); color: #F2B8AE; }
-.user-name{ font-size:13.5px; font-weight:600; max-width: 120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 .wrap{ max-width: 1120px; width: 100%; margin: 0 auto; padding: 28px 18px 24px; flex: 1; display:flex; flex-direction:column; }
 
@@ -215,8 +207,6 @@ h1.title{
   background: rgba(232,169,59,0.16); color: var(--gold); font-style: normal; font-size: 16px;
 }
 .title-edit:hover{ background: rgba(232,169,59,0.28); }
-#view-split.editing .view-only{ display:none !important; }
-.btn-primary.btn-done{ background: var(--sage); color: var(--paper); }
 /* Travel | 6 Oct 2026 | 4 people | 📍 Purulia, West Bengal */
 .split-hero-meta{ display:flex; flex-wrap:wrap; align-items:center; gap: 4px 0; margin-bottom: 12px; color: rgba(244,239,225,0.72); font-size:13.5px; }
 .split-hero-meta > :not(:first-child)::before{ content:"|"; margin: 0 10px; color: rgba(244,239,225,0.3); }
@@ -306,12 +296,6 @@ button:disabled{ opacity:.6; cursor: default; }
   font-size: 13.5px; font-weight:600;
 }
 .chip .chip-name{ background:none; border:none; padding:0; min-height:0; font-size:13.5px; color: var(--ink); cursor:pointer; }
-.chip .chip-name:hover{ text-decoration: underline; }
-.chip .chip-x{
-  background: transparent; border:none; color: var(--brick);
-  font-size:17px; line-height:1; padding: 2px 6px; min-height: 0; cursor:pointer; opacity:.6;
-}
-.chip .chip-x:hover{ opacity:1; }
 .chip .you{ font-size: 10.5px; font-family:'IBM Plex Mono',monospace; color: var(--sage); }
 /* People chips with photo / initial */
 .person-chip{ position: relative; padding: 4px 8px 4px 4px; gap: 8px; }
@@ -323,28 +307,15 @@ button:disabled{ opacity:.6; cursor: default; }
   font-size: 13px; font-weight: 700; line-height: 1;
 }
 .p-avatar img{ position:absolute; inset:0; width:100%; height:100%; object-fit: cover; }
-#view-split:not(.editing) .person-chip{ padding-right: 12px; }
+#view-split .person-chip{ padding-right: 12px; }
 
 @media (max-width: 600px){
-  /* View mode on phones: photos only, tap for the name */
-  #view-split:not(.editing) .person-chip{ padding: 3px; gap: 0; cursor: pointer; border-radius: 50%; }
-  #view-split:not(.editing) .person-chip .chip-name,
-  #view-split:not(.editing) .person-chip .you{ display:none; }
-  #view-split:not(.editing) .p-avatar{ width: 36px; height: 36px; font-size: 15px; }
-  #view-split:not(.editing) #detailMembers{ gap: 6px; }
-  .person-chip.tip::after{
-    content: attr(data-tip);
-    position:absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
-    background: var(--ink); color: var(--paper);
-    font-size: 12.5px; font-weight: 600; white-space: pre; text-align: center; line-height: 1.4;
-    padding: 6px 10px; border-radius: 8px; z-index: 5;
-    box-shadow: 0 6px 16px rgba(0,0,0,0.25);
-    animation: tipIn .12s ease;
-  }
-  .person-chip.tip::before{
-    content:""; position:absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
-    border: 6px solid transparent; border-top-color: var(--ink); border-bottom: 0; z-index: 5;
-  }
+  /* Phones: photos only (👁 shows names); tap a person for options */
+  #view-split .person-chip{ padding: 3px; gap: 0; cursor: pointer; border-radius: 50%; }
+  #view-split .person-chip .chip-name,
+  #view-split .person-chip .you{ display:none; }
+  #view-split .p-avatar{ width: 36px; height: 36px; font-size: 15px; }
+  #view-split #detailMembers{ gap: 6px; }
 }
 
 .avatar-dot{ width:8px; height:8px; border-radius:50%; background: var(--sage); display:inline-block; flex: 0 0 auto; }
@@ -368,10 +339,6 @@ button:disabled{ opacity:.6; cursor: default; }
 
 /* ---------- Entries ---------- */
 .entries-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 16px; }
-.totals-strip{ display:flex; flex-wrap:wrap; gap: 8px 22px; font-size: 13px; color: var(--ink-soft); margin-bottom: 8px; }
-.totals-strip b{ font-family:'IBM Plex Mono',monospace; color: var(--ink); }
-.totals-strip .neg{ color: var(--brick); }
-.totals-strip .pos{ color: var(--sage); }
 
 .table-wrap{ overflow-x:auto; margin: 0 -8px; padding: 0 8px; }
 table.entry-table{ width:100%; border-collapse: collapse; font-size:13.5px; }
@@ -397,61 +364,40 @@ table.entry-table{ width:100%; border-collapse: collapse; font-size:13.5px; }
 .excl-note{ font-size:11px; color: var(--ink); display:block; margin-top:2px; }
 .excl-names{ color: var(--brick); }
 .split-all{ color: var(--sage); font-weight: 600; }
-.cell-actions{ white-space:nowrap; text-align:right; }
 .c-m{ display:none; }
-.note-btn{
-  position: relative; background: var(--paper-dim); border: none; border-radius: 8px;
-  min-height: 0; padding: 3px 7px; font-size: 13px; line-height: 1.2; cursor: pointer;
-}
-.note-btn.open::after{
-  content: attr(data-note);
-  position:absolute; right: 0; bottom: calc(100% + 8px); z-index: 6;
-  width: max-content; max-width: 240px; white-space: normal; text-align:left;
-  background: var(--ink); color: var(--paper); font-size: 12.5px; font-weight: 500; line-height: 1.45;
-  padding: 8px 11px; border-radius: 9px; box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-  animation: tipIn .12s ease;
-}
-.note-btn.open::before{
-  content:""; position:absolute; right: 10px; bottom: calc(100% + 2px); z-index: 6;
-  border: 6px solid transparent; border-top-color: var(--ink); border-bottom: 0;
-}
 .empty-note{ text-align:center; color: var(--ink-soft); font-size:13.5px; padding: 26px 10px; }
 
-/* ---------- View / edit mode ---------- */
-#view-split:not(.editing) .edit-only{ display:none !important; }
-#view-split:not(.editing) .entry-table tbody tr{ cursor: default; }
-#view-split:not(.editing) .chip .chip-name{ cursor: default; text-decoration: none; }
-#view-split.editing .ticket{ box-shadow: 0 0 0 2px var(--gold), 0 18px 40px rgba(0,0,0,0.28); }
 
 /* ---------- Results ---------- */
-.result-grid{ display:flex; gap:12px; margin-bottom: 6px; }   /* stat boxes always in one row */
-.result-grid .stat-box{ flex: 1 1 0; min-width: 0; }
+.result-grid{ display:flex; flex-wrap:wrap; gap:12px; margin-bottom: 6px; }   /* a box too wide for the row moves to the next line */
+.result-grid .stat-box{ flex: 1 1 0; min-width: max-content; }
 .stat-box{ background: var(--paper-dim); border-radius:10px; padding: 14px 16px; border: 1px solid var(--line); }
 .stat-label{
   font-family:'IBM Plex Mono',monospace; font-size:10.5px; text-transform:uppercase;
   letter-spacing:.05em; color: var(--ink-soft); margin-bottom:6px;
 }
 .stat-value{ font-family:'Fraunces',serif; font-weight:600; font-size:22px; }
-.person-row{
-  display:flex; justify-content:space-between; align-items:center; gap: 12px;
+.person-row{   /* the balance moves under the name when they don't fit side by side */
+  display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap: 4px 12px;
   padding: 10px 4px; border-bottom: 1px solid var(--line);
 }
 .person-row:last-child{ border-bottom:none; }
-.person-left{ min-width:0; display:flex; flex-direction:column; gap: 2px; }
-.person-name{ font-weight:600; font-size: 14.5px; }
+.person-left{ flex: 1 0 auto; max-width: 100%; display:flex; flex-direction:column; gap: 2px; }
+.person-name{ font-weight:400; font-size: 13.5px; }
 .person-name .you{ font-size: 10px; font-family:'IBM Plex Mono',monospace; color: var(--sage); margin-left: 4px; }
-.person-sub{ color: var(--ink-soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.person-bal{ flex: 0 0 auto; display:flex; flex-direction:column; align-items:flex-end; gap: 1px; text-align:right; }
+.person-sub{ color: var(--ink-soft); font-size: 12px; }
+.person-bal{ flex: 0 0 auto; margin-left: auto; display:flex; flex-direction:column; align-items:flex-end; gap: 1px; text-align:right; }
 .person-bal small{ font-size: 10.5px; font-family:'IBM Plex Mono',monospace; text-transform: uppercase; letter-spacing: .05em; opacity: .85; }
 .person-bal b{ font-family:'IBM Plex Mono',monospace; font-size: 15px; font-weight: 700; white-space: nowrap; }
 .bal-pos{ color: var(--sage); }
 .bal-neg{ color: var(--brick); }
 .bal-zero{ color: var(--ink-soft); }
-.bal-zero b{ font-size: 12.5px; font-weight: 600; }
+.person-bal.bal-zero b{ font-size: 12.5px; font-weight: 600; }
 .settle-row{
   display:flex; align-items:center; gap:10px; padding: 12px 14px; background:#fff;
   border-radius:10px; margin-bottom:10px; border: 1px solid var(--line); font-size:14px; flex-wrap:wrap;
 }
+.settle-row strong{ font-weight: 400; }
 .settle-row .arrow{ color: var(--gold); font-size:18px; }
 .settle-row .amt{ margin-left:auto; color: var(--brick); }
 .settle-empty{ text-align:center; padding:20px; color:var(--ink-soft); font-style:italic; font-size:13.5px; }
@@ -530,44 +476,49 @@ body.no-scroll{ overflow:hidden; }
 
 /* ================= RESPONSIVE ================= */
 @media (max-width: 760px){
-  /* Entry table -> stacked cards */
-  .table-wrap{ overflow: visible; margin:0; padding:0; }
+  /* Phone list (tap a row for details), rows run edge to edge of the card:
+       1  (S) Subho .................................. −₹899
+       ☐  Dinner with friends at ABC ................... UPI   */
+  .table-wrap{ overflow: visible; padding:0; margin: 0 calc(-1 * var(--edge, 28px)); }
   .entry-table thead{ display:none; }
-  /* Phone cards:
-       Dinner with friends at ABC                     −₹899
-       Subho | UPI | 06 Oct · 10:15 pm | Purulia
-       Everyone                                         📝      */
-  .entry-table, .entry-table tbody, .entry-table td{ display:block; width:100%; }
+  .entry-table, .entry-table tbody{ display:block; width:100%; }
   .entry-table tbody tr{
-    position: relative;
-    background:#fff; border: 1px solid var(--line); border-radius: 12px;
-    padding: 11px 12px 10px 14px; margin-bottom: 8px;
-    display:flex; flex-wrap:wrap; align-items:center; gap: 0 10px;
+    padding: 14px var(--edge, 28px); border-bottom: 1px solid var(--line);
+    display:grid; align-items:center; gap: 10px 10px;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "sl      avatar  name    amount"
+      "check   purpose purpose via";
   }
-  .entry-table td{ border:none; padding: 0; width:auto; }
-  /* the table's own columns are folded into the meta line on phones */
-  .entry-table td.c-date, .entry-table td.c-via, .entry-table td.c-by,
-  .entry-table td.c-loc, .entry-table td.c-note{ display:none; }
-  .entry-table td.c-purpose{ order:1; flex:1 1 0; min-width:0; font-weight:700; font-size: 13.5px; line-height:1.35; }
-  .entry-table td.c-amount{ order:2; align-self:flex-start; text-align:right; font-size: 15px; }
-  .entry-table td.c-meta{
-    order:3; flex-basis:100%; display:flex; flex-wrap:nowrap; align-items:center; min-width:0;
-    margin: 4px 0 6px; font-size: 12px; color: var(--ink-soft); line-height: 1.5;
+  .entry-table tbody tr:last-child{ border-bottom: none; }
+  .entry-table tbody tr.row-minus, .entry-table tbody tr.row-plus{ box-shadow: none; }
+  .entry-table td{ border:none; padding: 0; width:auto; min-width: 0; }
+  /* the desktop columns are swapped for the phone-only (.c-m) cells */
+  .entry-table td.c-date, .entry-table td.c-via, .entry-table td.c-by, .entry-table td.c-loc,
+  .entry-table td.c-note, .entry-table td.c-split, .entry-table td.c-purpose{ display:none; }
+  .entry-table td.c-m{ display:block; }
+  .entry-table td.c-check{ grid-area: check; width: auto; }
+  .entry-table td.m-avatar{ grid-area: avatar; display:flex; }
+  .entry-table td.m-avatar .p-avatar{ width: 28px; height: 28px; font-size: 12px; }
+  .entry-table td.m-name{ grid-area: name; font-weight: 600; font-size: 14px; }
+  .entry-table td.c-amount{ grid-area: amount; text-align:right; font-size: 15px; }
+  .entry-table td.m-purpose{ grid-area: purpose; font-size: 13.5px; color: var(--ink); }
+  .entry-table td.m-via{ grid-area: via; text-align:right; font-size: 12.5px; color: var(--ink-soft); max-width: 90px; }
+  .entry-table td.m-name, .entry-table td.m-purpose, .entry-table td.m-via{
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .c-meta > span + span::before{ content:"|"; margin: 0 4px; color: rgba(27,36,32,0.25); font-size: 12px; }
-  .c-meta .m-when{ font-size: 11px; }
-  /* one line: the last part (usually the location) gets "…" when it doesn't fit */
-  .c-meta > span{ flex: 0 0 auto; white-space: nowrap; }
-  .c-meta > span:last-child{ flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .c-meta a{ color: var(--sage); text-decoration:none; }
-  .entry-table td.c-split{ order:4; flex:1 1 0; min-width:0; font-size: 12px; color: var(--ink); }
-  .entry-table td.c-split .excl-note{ display:inline; margin-left: 4px; font-size: 11px; }
-  .entry-table td.c-split::before{ content: "Split with: "; color: var(--ink-soft); }
-  .entry-table td.c-noteicon{ order:5; }
-  .entry-table td.cell-actions{ order:6; }
-  .entry-table td.cell-actions .btn-icon{ min-height: 26px; padding: 2px 6px; font-size: 13px; }
   .entry-table .sub{ display:none; }
 }
+@media (max-width: 600px){ .table-wrap{ --edge: 16px; } }
+
+/* ---------- Entry details popup ---------- */
+.ev-top{ display:flex; align-items:center; gap: 12px; margin-bottom: 14px; }
+.ev-top .p-avatar{ width: 38px; height: 38px; font-size: 16px; }
+.ev-purpose{ flex: 1; min-width: 0; font-family:'Fraunces',serif; font-weight:600; font-size: 19px; line-height: 1.3; overflow-wrap:anywhere; }
+.ev-amount{ font-size: 19px; }
+.ev-row{ display:flex; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.ev-label{ flex: 0 0 auto; color: var(--ink-soft); }
+.ev-value{ flex: 1; min-width: 0; text-align: right; overflow-wrap:anywhere; }
 
 @media (max-width: 600px){
   .wrap{ padding: 20px 14px 18px; }
@@ -580,8 +531,6 @@ body.no-scroll{ overflow:hidden; }
   .topbar .btn-small{ min-height: 30px; padding: 5px 11px; font-size: 12px; border-radius: 7px; }
   .top-back{ width: 30px; height: 30px; font-size: 17px; }
   .user-avatar{ width: 26px; height: 26px; font-size: 11px; }
-  .logout-btn{ min-height: 26px; padding: 4px 10px; font-size: 11.5px; }
-  .user-name{ display:none; }
   .hero{ margin: 30px 0 38px; }
   .eyebrow{ font-size: 9px; letter-spacing: .12em; white-space: nowrap; margin-bottom: 24px; }
   h1.title{ font-size: 30px; margin-bottom: 0; }
@@ -750,13 +699,13 @@ body.no-scroll{ overflow:hidden; }
   .people-card .step-head{ margin-bottom: 4px; }
   .people-card .step-title{ font-size: 18px; }
   .people-card .chip-list{ margin-top: 6px; }
-  #view-split:not(.editing) .people-card .p-avatar{ width: 30px; height: 30px; font-size: 13px; }
+  #view-split .people-card .p-avatar{ width: 30px; height: 30px; font-size: 13px; }
   .people-card .add-inline{ margin-top: 10px; }
   /* three stat boxes side by side */
   .result-grid{ gap: 8px; }
   .stat-box{ padding: 10px 10px; }
   .stat-label{ font-size: 9px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .stat-value{ font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-value{ font-size: 17px; white-space: nowrap; }
 }
 .split-hero-type{ font-family:'IBM Plex Mono',monospace; font-size: 11px; letter-spacing:.2em; text-transform:uppercase; color: var(--gold); margin-bottom: 6px; }
 
@@ -765,21 +714,9 @@ body.no-scroll{ overflow:hidden; }
 #view-split .purpose-wrap .p-avatar{ width: 24px; height: 24px; font-size: 11px; }
 .purpose-text{ min-width: 0; }
 @media (max-width: 760px){
-  .entry-table td.c-purpose .purpose-wrap{ align-items:center; gap: 9px; position: relative; min-width: 0; cursor: default; }
-  /* one line; tap a cut-off purpose to read all of it */
+  .entry-table td.c-purpose .purpose-wrap{ align-items:center; gap: 9px; min-width: 0; }
+  /* one line; the details popup shows all of it */
   .entry-table td.c-purpose .purpose-text{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .purpose-wrap.open::after{
-    content: attr(data-full);
-    position:absolute; left: 0; top: calc(100% + 8px); z-index: 6;
-    width: max-content; max-width: min(280px, 78vw); white-space: normal;
-    background: var(--ink); color: var(--paper); font-size: 13px; font-weight: 600; line-height: 1.45;
-    padding: 8px 11px; border-radius: 9px; box-shadow: 0 8px 20px rgba(0,0,0,0.25);
-    animation: tipIn .12s ease;
-  }
-  .purpose-wrap.open::before{
-    content:""; position:absolute; left: 34px; top: calc(100% + 2px); z-index: 6;
-    border: 6px solid transparent; border-bottom-color: var(--ink); border-top: 0;
-  }
   #view-split .entry-table td.c-purpose .p-avatar{ width: 24px; height: 24px; font-size: 11px; }
 }
 
@@ -813,27 +750,27 @@ body.no-scroll{ overflow:hidden; }
 .btn-danger:hover{ box-shadow: 0 6px 16px rgba(181,74,61,0.35); }
 @media (min-width: 601px){ .confirm-sheet{ max-width: 380px; } }
 
-/* ---------- People: 👁 show names (phones, view mode) ---------- */
+/* ---------- People: 👁 show names (phones) ---------- */
 .people-toggle{ display:none; }
 @media (max-width: 600px){
   .people-card .step-head{ align-items:center; }
-  #view-split:not(.editing) .people-toggle{
+  #view-split .people-toggle{
     display:inline-flex; align-items:center; gap: 5px; margin-left:auto;
     background: var(--paper-dim); color: var(--ink-soft); border: 1px solid var(--line);
     min-height: 0; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600;
   }
-  #view-split:not(.editing) .people-card.names-open .people-toggle{ background: var(--sage); color: var(--paper); border-color: var(--sage); }
+  #view-split .people-card.names-open .people-toggle{ background: var(--sage); color: var(--paper); border-color: var(--sage); }
   /* expanded: photo with the full name underneath */
-  #view-split:not(.editing) .people-card.names-open #detailMembers{ gap: 10px 6px; }
-  #view-split:not(.editing) .people-card.names-open .person-chip{
+  #view-split .people-card.names-open #detailMembers{ gap: 10px 6px; }
+  #view-split .people-card.names-open .person-chip{
     flex-direction: column; gap: 4px; width: 56px; padding: 0;
-    background: none; border: none; border-radius: 0; cursor: default;
+    background: none; border: none; border-radius: 0;
   }
-  #view-split:not(.editing) .people-card.names-open .person-chip .chip-name{
+  #view-split .people-card.names-open .person-chip .chip-name{
     display:block; max-width: 100%; font-size: 11px; font-weight: 600; line-height: 1.25;
-    text-align:center; overflow-wrap:anywhere; cursor: default;
+    text-align:center; overflow-wrap:anywhere;
   }
-  #view-split:not(.editing) .people-card.names-open .p-avatar{ box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--line); }
+  #view-split .people-card.names-open .p-avatar{ box-shadow: 0 0 0 2px var(--paper), 0 0 0 3.5px var(--line); }
 }
 
 /* ---------- Back button (SVG chevron renders the same on every phone) ---------- */
@@ -862,22 +799,15 @@ body.no-scroll{ overflow:hidden; }
   /* ---------- Bigger text: entries ---------- */
   .entry-table td.c-purpose{ font-size: 15px; }
   .entry-table td.c-amount{ font-size: 16px; }
-  .entry-table td.c-meta{ font-size: 13px; }
-  .c-meta .m-when{ font-size: 12px; }
-  .c-meta > span + span::before{ font-size: 13px; }
-  .entry-table td.c-split{ font-size: 13.5px; }
-  .entry-table td.c-split .excl-note{ font-size: 12.5px; }
-  .note-btn{ font-size: 14px; }
-  .totals-strip{ font-size: 14px; }
 
   /* ---------- Bigger text: settle up ---------- */
   .stat-label{ font-size: 10px; }
   .stat-value{ font-size: 19px; }
-  .person-name{ font-size: 15.5px; }
+  .person-name{ font-size: 14px; }
   .person-sub{ font-size: 13px; }
   .person-bal small{ font-size: 11px; }
   .person-bal b{ font-size: 16px; }
-  .settle-row{ font-size: 15px; }
+  .settle-row{ font-size: 14px; }
   .settle-row .amt{ font-size: 15.5px; }
   .section-label{ font-size: 12px; }
 }
@@ -892,7 +822,6 @@ body.no-scroll{ overflow:hidden; }
   .top-back{ width: 36px; height: 36px; }
   .top-back svg{ width: 21px; height: 21px; }
   .user-avatar{ width: 28px; height: 28px; font-size: 12px; }
-  .logout-btn{ font-size: 12.5px; }
   .statusbar{ font-size: 12.5px; padding: 4px 10px; }
 
   /* home */
@@ -926,28 +855,21 @@ body.no-scroll{ overflow:hidden; }
   .split-hero-row .btn-small{ font-size: 13.5px; min-height: 34px; padding: 6px 12px; }
   .title-edit{ width: 30px; height: 30px; font-size: 15px; }
   .people-card .step-title{ font-size: 20px; }
-  #view-split:not(.editing) .people-card .p-avatar{ width: 33px; height: 33px; font-size: 14px; }
-  #view-split:not(.editing) .people-card.names-open .person-chip .chip-name{ font-size: 12px; }
-  #view-split:not(.editing) .people-toggle{ font-size: 13px; }
+  #view-split .people-card .p-avatar{ width: 33px; height: 33px; font-size: 14px; }
+  #view-split .people-card.names-open .person-chip .chip-name{ font-size: 12px; }
+  #view-split .people-toggle{ font-size: 13px; }
   .chip, .chip .chip-name{ font-size: 14.5px; }
   .entries-actions .btn-ghost, .entries-actions .btn-primary{ font-size: 14px; }
   .entry-table td.c-purpose{ font-size: 16px; }
   .entry-table td.c-amount{ font-size: 17px; }
   #view-split .entry-table td.c-purpose .p-avatar{ width: 26px; height: 26px; font-size: 12px; }
-  .entry-table td.c-meta{ font-size: 13.5px; }
-  .c-meta .m-when{ font-size: 12.5px; }
-  .entry-table td.c-split{ font-size: 14px; }
-  .entry-table td.c-split .excl-note{ font-size: 13px; }
-  .note-btn{ font-size: 15px; padding: 4px 8px; }
-  .entry-table td.cell-actions .btn-icon{ font-size: 15px; }
-  .totals-strip{ font-size: 14.5px; }
   .stat-label{ font-size: 10.5px; }
   .stat-value{ font-size: 20px; }
-  .person-name{ font-size: 16px; }
+  .person-name{ font-size: 14.5px; }
   .person-sub{ font-size: 13.5px; }
   .person-bal small{ font-size: 11.5px; }
   .person-bal b{ font-size: 16.5px; }
-  .settle-row{ font-size: 15.5px; }
+  .settle-row{ font-size: 14.5px; }
   .settle-row .amt{ font-size: 16px; }
 
   /* forms & buttons (16px inputs also stop iPhone zooming in on tap) */
@@ -973,7 +895,6 @@ body.no-scroll{ overflow:hidden; }
   .place-item{ font-size: 15px; }
   .place-item small{ font-size: 13px; }
   .toast{ font-size: 15px; }
-  .purpose-wrap.open::after, .note-btn.open::after, .person-chip.tip::after{ font-size: 14px; }
 }
 @media (max-width: 600px){
   /* trip details stay on one line; the last part (location) gets "…" */
@@ -1020,7 +941,20 @@ body.no-scroll{ overflow:hidden; }
 }
 
 /* ---------- People: "＋ Add person" + popup ---------- */
-.add-person-btn{ margin-top: 12px; }
+/* round ＋ at the end of the People row, with a tiny "Add" under it */
+#detailMembers{ align-items: flex-start; }   /* the taller ＋ / Add mustn't stretch the chips */
+.add-person{
+  display:flex; flex-direction:column; align-items:center; gap: 2px;
+  background:none; border:none; padding:0; min-height:0; cursor:pointer;
+  color: var(--sage); font-size: 10px; font-weight: 600; line-height: 1.2;
+}
+.add-person-circle{
+  width: 30px; height: 30px; border-radius: 50%;
+  display:flex; align-items:center; justify-content:center;
+  border: 1.5px dashed var(--sage); background: var(--sage-bg); font-size: 18px; line-height: 1;
+}
+.add-person:hover .add-person-circle{ background: var(--sage); color: var(--paper); border-style: solid; }
+@media (max-width: 600px){ .add-person-circle{ width: 36px; height: 36px; font-size: 20px; } }
 .person-sheet .sheet-body{ padding-top: 2px; }
 .person-lookup{
   display:flex; align-items:center; gap: 10px; margin-top: 8px;
@@ -1030,8 +964,106 @@ body.no-scroll{ overflow:hidden; }
 .person-lookup.found{ background: var(--sage-bg); color: var(--ink); }
 .person-lookup.missing{ background: rgba(232,169,59,0.16); color: var(--ink); }
 .person-lookup .p-avatar{ width: 34px; height: 34px; font-size: 14px; background: var(--sage); color: #fff; }
-#view-split.editing .person-chip{ cursor: pointer; }
+.person-chip{ cursor: pointer; }
 .import-example{
   margin: 0; padding: 8px 10px; border-radius: 8px; background: rgba(27,36,32,0.06);
   font-family:'IBM Plex Mono',monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap;
 }
+
+/* ---------- Settle up: collapsed until you tap its header ---------- */
+.settle-toggle{
+  width: 100%; background: none; border: none; padding: 0; min-height: 0;
+  color: var(--ink); text-align: left; cursor: pointer; align-items: center;
+}
+.settle-caret{ margin-left: auto; font-size: 18px; color: var(--ink-soft); transition: transform .2s ease; }
+.settle-card:not(.open) .settle-toggle{ margin-bottom: 0; }
+.settle-card:not(.open) .settle-body{ display: none; }
+.settle-card.open .settle-caret{ transform: rotate(180deg); }
+
+/* ---------- Edit person: photo on top, Delete on the left of the footer ---------- */
+.person-photo .p-avatar{ width: 100%; height: 100%; font-size: 32px; }
+
+/* ---------- Entries: [search 🔍] [⏷ Filter], then Sl No. | Name | Amount to sort ---------- */
+.entry-tools{ display:flex; gap: 8px; margin: -4px 0 10px; }
+.entry-search-box{ position: relative; flex: 1; min-width: 0; }
+.entry-search-box input{ min-height: 40px; padding: 8px 38px 8px 12px; }
+.entry-search-box svg{ position:absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
+@media (min-width: 761px){ .entry-search-box input{ font-size: 13.5px; } }   /* phones keep 16px so iPhone doesn't zoom */
+.filter-btn{
+  flex: 0 0 auto; display:inline-flex; align-items:center; gap: 6px; min-height: 40px; padding: 0 14px;
+  border: 1.5px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+  font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.filter-btn.on{ border-color: var(--sage); color: var(--sage); background: var(--sage-bg); }
+.filter-count{
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: var(--sage); color: var(--paper); font-size: 11px; line-height: 18px; text-align: center;
+}
+.entry-filter-note{ font-size: 12.5px; color: var(--ink-soft); margin: -2px 0 8px; }
+
+/* Sl No. | Name | ............ | Amount — tap to sort (ascending) */
+.entry-sortbar{
+  display:grid; grid-template-columns: auto auto 1fr auto; gap: 0 14px; align-items:center;
+  padding: 6px 12px; margin-bottom: 4px; border-radius: 9px; background: var(--paper-dim);
+}
+.entry-sortbar button, .th-sort{
+  background:none; border:none; padding: 2px 0; min-height: 0; cursor:pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-soft); letter-spacing: .02em;
+}
+.th-sort{ text-transform: inherit; letter-spacing: inherit; font-size: inherit; }
+.entry-sortbar button.on, .th-sort.on{ color: var(--ink); }
+.entry-sortbar button.on::after, .th-sort.on::after{ content: " ▲"; font-size: 9px; color: var(--sage); }
+@media (min-width: 761px){ .entry-sortbar{ display:none; } }   /* desktop sorts from the table headers */
+
+/* Sl No. above the checkbox (desktop: in the same cell; phones: its own grid cell) */
+.sl-no{ display:block; margin-bottom: 3px; text-align:center; font-size: 11px; color: var(--ink-soft); }
+@media (max-width: 760px){
+  .entry-table td.c-check .sl-no{ display:none; }
+  .entry-table td.m-sl{ grid-area: sl; text-align:center; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); }
+}
+
+/* Filter popup */
+.filter-label{ font-weight: 700; font-size: 14px; margin: 16px 0 8px; }
+.filter-label:first-child{ margin-top: 2px; }
+.filter-chips{ display:flex; flex-wrap:wrap; gap: 8px; }
+.f-chip{
+  min-height: 0; padding: 7px 14px; border-radius: 20px; cursor:pointer;
+  border: 1.5px solid var(--line); background: #fff; color: var(--ink); font-size: 13.5px; font-weight: 500;
+}
+.f-chip.on{ border-color: var(--sage); background: var(--sage-bg); color: var(--sage); font-weight: 600; }
+
+/* ---------- Tick entries to add them up ---------- */
+.entry-table .c-check{ width: 34px; padding-right: 0; }
+.ent-check{ display:flex; align-items:center; justify-content:center; cursor:pointer; }
+.ent-check input{ width: 18px; height: 18px; margin: 0; accent-color: var(--sage); cursor:pointer; }
+.entry-table tbody tr.picked{ background: rgba(232,169,59,0.12); }
+/* sticks to the bottom of the screen while the list scrolls */
+.select-bar{
+  position: sticky; bottom: 12px; z-index: 5;
+  display:flex; align-items:center; gap: 10px; margin-top: 12px;
+  padding: 10px 14px; border-radius: 12px;
+  background: var(--ink); color: var(--paper); box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+}
+.select-summary{ flex: 1; min-width: 0; display:flex; flex-wrap:wrap; align-items:baseline; gap: 2px 12px; font-size: 13.5px; }
+.select-summary .sel-count{ font-weight: 600; }
+.select-bar .amt{ color: var(--paper); font-size: 15px; }
+.select-bar .amt.minus{ color: #F2B8AE; }
+.select-bar .amt.plus{ color: #A9D3C2; }
+.select-bar .btn-link-text{ color: var(--gold); flex: 0 0 auto; }
+
+/* ---------- Entries: header, search and sort stay under the top bar while the list scrolls ---------- */
+.entries-sticky{
+  --pad: 28px;
+  position: sticky; top: var(--topbar-h, 0px); z-index: 6;
+  margin: 0 calc(-1 * var(--pad)); padding: 8px var(--pad) 2px;
+  background: var(--paper);
+}
+.entries-sticky .entries-head{ margin-bottom: 14px; }
+@media (max-width: 600px){ .entries-sticky{ --pad: 16px; } }
+
+/* Small total under the "Entries" title */
+.entries-title{ flex-direction: column; align-items: flex-start; gap: 2px; }
+.entries-total{ font-size: 12.5px; color: var(--ink-soft); }
+.entries-total:empty{ display: none; }
+.entries-total b{ color: var(--ink); font-weight: 600; }
+.entries-total .muted{ font-size: 11.5px; }

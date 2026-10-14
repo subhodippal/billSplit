@@ -148,11 +148,8 @@ function renderAuth(){
     area.innerHTML = `
       <div class="user-pill">
         <button class="user-avatar" id="avatarBtn" title="Your profile" aria-label="Your profile">${avatarInner(user)}</button>
-        <span class="user-name">${escapeHtml(user.name)}</span>
-        <button class="logout-btn" id="logoutBtn" title="Log out">Log out</button>
       </div>`;
     $('avatarBtn').onclick = openProfile;
-    $('logoutBtn').onclick = logOut;
   } else {
     area.innerHTML = `<button class="btn-primary btn-small" id="loginBtn">Log in</button>`;
     $('loginBtn').onclick = () => openLogin();
@@ -177,23 +174,20 @@ function openProfile(){
     ` · ${count} split${count === 1 ? '' : 's'}`;
   openSheet('profileSheet');
 }
-$('profileRenameBtn').onclick = async () => {
-  await changeMyName();
-  if(!$('profileSheet').hidden) openProfile();   // show the new name
-};
 $('profileLogoutBtn').onclick = () => { closeSheet('profileSheet'); logOut(); };
 
+// The profile popup is the confirmation; only ask again if unsynced changes would be lost.
 async function logOut(){
   const pending = CLOUD ? outbox.length : 0;
-  const ok = await confirmDialog({
-    icon: '👋',
-    title: 'Log out?',
-    message: !CLOUD ? 'Your splits stay saved on this device.'
-      : pending ? `You have <strong>${pending} change${pending > 1 ? 's' : ''}</strong> that haven’t synced yet — they’ll be lost if you log out now.`
-      : 'You can log back in with Google any time — your splits are saved in your account.',
-    confirmLabel: 'Log out'
-  });
-  if(!ok) return;
+  if(pending){
+    const ok = await confirmDialog({
+      icon: '👋',
+      title: 'Log out?',
+      message: `You have <strong>${pending} change${pending > 1 ? 's' : ''}</strong> that haven’t synced yet — they’ll be lost if you log out now.`,
+      confirmLabel: 'Log out'
+    });
+    if(!ok) return;
+  }
   if(CLOUD){
     const id = user.id;
     try{ await Cloud.signOut(); } catch(err){ toast(err.message); }
@@ -208,20 +202,6 @@ async function logOut(){
   user = null;
   renderAuth();
   route();
-}
-
-async function changeMyName(){
-  const input = prompt('Your name (shown on entries you add):', user.name);
-  const name = cleanName(input || '');
-  if(!name || name === user.name) return;
-  if(CLOUD){
-    try{ await Cloud.updateName(name); } catch(err){ toast(err.message); return; }
-  } else {
-    save(USER_KEY, { ...user, name });
-  }
-  user = { ...user, name };
-  renderAuth();
-  toast('Name updated — rename yourself in a split’s People list if needed');
 }
 
 function showLoginMsg(msg, isError){
@@ -396,14 +376,17 @@ function setFavourite(id, on){
   save(FAV_KEY, [...favourites]);
 }
 
-// Star / delete buttons sit inside the card link, so stop them from opening the split.
+// Share / star / delete buttons sit inside the card link, so stop them from opening the split.
 $('splitList').addEventListener('click', e => {
+  const share = e.target.closest('[data-share]');
   const fav = e.target.closest('[data-fav]');
   const del = e.target.closest('[data-del]');
-  if(!fav && !del) return;
+  if(!share && !fav && !del) return;
   e.preventDefault();
   e.stopPropagation();
-  if(fav){
+  if(share){
+    shareSplit(getSplit(share.dataset.share));
+  } else if(fav){
     const on = !isFavourite(fav.dataset.fav);
     setFavourite(fav.dataset.fav, on);
     toast(on ? '★ Added to favourites' : 'Removed from favourites');
@@ -433,6 +416,7 @@ function renderSplitList(keepScroll){
         <div class="split-card-top">
           <span class="hint" style="margin:0;">${s.collaborators > 1 ? `👥 shared · ` : ''}${formatDay(s.createdAt)}</span>
           <span class="card-actions">
+            <button type="button" class="card-btn share-btn" data-share="${s.id}" title="Share split" aria-label="Share split">↗</button>
             <button type="button" class="card-btn fav-btn ${fav ? 'on' : ''}" data-fav="${s.id}" title="${fav ? 'Remove from favourites' : 'Add to favourites'}" aria-pressed="${fav}">${fav ? '★' : '☆'}</button>
             <button type="button" class="card-btn del-btn" data-del="${s.id}" title="${leaving ? 'Leave split' : 'Delete split'}">🗑</button>
           </span>
@@ -520,28 +504,29 @@ $('splitForm').addEventListener('submit', async (e) => {
 
 /* ---------------- SPLIT DETAIL ---------------- */
 let currentSplitId = null;
-let editMode = false;   // splits open read-only; tap Edit to change anything
 function cur(){ return getSplit(currentSplitId); }
 
-function setEditMode(on){
-  editMode = on;
-  $('view-split').classList.toggle('editing', on);
-  $('modeBtn').textContent = on ? '✓ Done' : '✎ Edit';
-  $('modeBtn').classList.toggle('btn-done', on);
-  $('entryEmpty').innerHTML = on
-    ? 'No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.'
-    : 'No entries yet. Tap <strong>✎ Edit</strong> to start adding expenses.';
+// The Entries header sticks just below the top bar, whose height changes (notch, wrapping).
+(() => {
+  const bar = document.querySelector('.topbar');
+  if(!bar) return;
+  const set = () => document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px');
+  set();
+  if(window.ResizeObserver) new ResizeObserver(set).observe(bar);
+})();
+
+// Settle up starts collapsed; tap its header to open it.
+function setSettleOpen(open){
+  $('settleCard').classList.toggle('open', open);
+  $('settleToggle').setAttribute('aria-expanded', open);
 }
-$('modeBtn').onclick = () => {
-  const toggle = on => { setEditMode(on); if(cur()) renderMembers(); };
-  toggle(!editMode);
-};
+$('settleToggle').onclick = () => setSettleOpen(!$('settleCard').classList.contains('open'));
 
 function renderSplitDetail(id, keepScroll){
-  // Back to view mode when opening another split or arriving from outside it
-  // (returning from "Details" keeps you editing).
+  // Collapse Settle up when opening another split or arriving from outside it
+  // (returning from "Details" keeps it as it was).
   const opening = id !== currentSplitId || !['split', 'new'].includes(currentView);
-  if(opening) setEditMode(false);
+  if(opening){ setSettleOpen(false); resetEntryFilters(); selectedEntries.clear(); }
   currentSplitId = id;
   const s = cur();
   if(opening) loadAvatars(s);
@@ -573,10 +558,11 @@ function renderMembers(){
   $('detailMembers').innerHTML = s.members.map(m => `
     <div class="chip person-chip" data-person="${escapeHtml(m)}" data-tip="${tip(m)}" title="${tip(m)}">
       ${personAvatar(m)}
-      <button type="button" class="chip-name" data-rename="${escapeHtml(m)}">${escapeHtml(m)}</button>
+      <span class="chip-name">${escapeHtml(m)}</span>
       ${m === me() ? '<span class="you">YOU</span>' : ''}
-      <button type="button" class="chip-x edit-only" data-remove="${escapeHtml(m)}" title="Remove">×</button>
-    </div>`).join('') || `<span class="hint">No one yet${editMode ? ' — add people below' : ''}.</span>`;
+    </div>`).join('') +
+    `<button type="button" class="add-person" data-add-person title="Add person" aria-label="Add person">
+      <span class="add-person-circle" aria-hidden="true">＋</span>Add</button>`;
 }
 
 // Phones, view mode: 👁 shows everyone's name under their photo.
@@ -584,7 +570,6 @@ $('peopleToggle').onclick = function(){
   const open = this.closest('.people-card').classList.toggle('names-open');
   this.setAttribute('aria-pressed', open);
   this.title = open ? 'Hide names' : 'Show names';
-  hideTips();
 };
 
 /* --- profile photos --- */
@@ -615,20 +600,6 @@ function personAvatar(name){
   return `<span class="p-avatar" style="--hue:${hash}">${escapeHtml(name.trim().charAt(0).toUpperCase())}${url
     ? `<img src="${escapeHtml(url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>`;
 }
-
-// Phones show photos only (in view mode); tap one to see the name.
-let tipTimer;
-function hideTips(){ document.querySelectorAll('.person-chip.tip').forEach(c => c.classList.remove('tip')); }
-document.addEventListener('click', e => {
-  const chip = !editMode && !document.querySelector('.people-card.names-open') && e.target.closest('#detailMembers .person-chip');
-  const wasOpen = chip && chip.classList.contains('tip');
-  hideTips();
-  clearTimeout(tipTimer);
-  if(chip && !wasOpen){
-    chip.classList.add('tip');
-    tipTimer = setTimeout(hideTips, 2500);
-  }
-});
 
 function addMember(split, rawName){
   const name = cleanName(rawName);
@@ -667,14 +638,16 @@ function openPersonSheet(name){
   personFound = null;
   $('personTitle').textContent = name ? 'Edit person' : 'Add person';
   $('personSaveBtn').textContent = name ? 'Save' : 'Add person';
+  $('personPhoto').innerHTML = name ? personAvatar(name) : '';
+  $('personPhoto').hidden = !name;
+  $('personDeleteBtn').hidden = !name;
   $('personName').value = name || '';
   $('personEmail').value = name ? (personInfo(s, name).email || '') : '';
   $('personLookup').hidden = true;
   $('personEmailHint').hidden = false;
   openSheet('personSheet');
-  setTimeout(() => (name ? $('personName') : $('personEmail')).focus(), 60);
+  if(!name) setTimeout(() => $('personName').focus(), 60);
 }
-$('addPersonBtn').onclick = () => openPersonSheet(null);
 
 function showLookup(html, cls){
   $('personLookup').innerHTML = html;
@@ -775,15 +748,13 @@ async function syncPeopleByEmail(s, accounts){
   }
 }
 
+// Tap ＋ to add someone; tap a person to edit their name / email, or delete them.
 $('detailMembers').addEventListener('click', (e) => {
-  if(!editMode) return;
-  const s = cur();
-  // × removes; tapping anywhere else on a person (photo or name) edits them.
-  const rem = e.target.closest('[data-remove]');
-  if(rem){ removeMember(s, rem.dataset.remove); return; }
+  if(e.target.closest('[data-add-person]')){ openPersonSheet(null); return; }
   const chip = e.target.closest('[data-person]');
   if(chip) openPersonSheet(chip.dataset.person);
 });
+$('personDeleteBtn').onclick = () => { closeSheet('personSheet'); removeMember(cur(), personEditing); };
 
 // Rename (or merge) a person everywhere: People, "paid by", shares and their email.
 async function renameEverywhere(s, from, to){
@@ -806,14 +777,19 @@ async function removeMember(s, name){
   const entries = liveEntries(s);
   const paid = entries.filter(e => e.paidBy === name).length;
   if(paid){
-    alert(`${name} paid for ${paid} entr${paid === 1 ? 'y' : 'ies'}. Change "Paid by" on those first, or tap the name to rename/merge.`);
+    alert(`${name} paid for ${paid} entr${paid === 1 ? 'y' : 'ies'}. Change "Paid by" on those first, or use "Change name" to merge them into someone else.`);
     return;
   }
   const inSplits = entries.filter(e => e.splitAmong.includes(name)).length;
-  const msg = inSplits
-    ? `Remove ${name}? They'll be taken out of ${inSplits} entr${inSplits === 1 ? 'y' : 'ies'} and those costs re-shared among the rest.`
-    : `Remove ${name} from this split?`;
-  if(!confirm(msg)) return;
+  const ok = await confirmDialog({
+    icon: '🗑️',
+    title: `Delete ${name}?`,
+    message: inSplits
+      ? `They'll be taken out of ${inSplits} entr${inSplits === 1 ? 'y' : 'ies'} and those costs re-shared among the rest.`
+      : 'They’ll be removed from this split.',
+    confirmLabel: 'Delete'
+  });
+  if(!ok) return;
   s.members = s.members.filter(m => m !== name);
   s.entries.forEach(en => {
     if(en.splitAmong.includes(name)){ en.splitAmong = en.splitAmong.filter(n => n !== name); touch(en); }
@@ -830,21 +806,110 @@ function sortedEntries(s){
   return liveEntries(s).slice().sort((a, b) => (a.datetime || '').localeCompare(b.datetime || '') || a.createdAt - b.createdAt);
 }
 
+// Search / filter / sort for the entries list (filters reset per split, sort is kept).
+// Sl No. is an entry's place in date order, so it stays the same whatever is sorted or filtered.
+let entryQuery = '', entrySort = 'sl';
+let fPaidBy = new Set(), fPayVia = new Set(), fShow = 'all';   // empty set = everyone / every method
+let slNo = new Map();   // entry id -> 1, 2, 3…
+
+function resetEntryFilters(){
+  entryQuery = ''; fPaidBy = new Set(); fPayVia = new Set(); fShow = 'all';
+  $('entrySearch').value = '';
+}
+function filterCount(){ return (fPaidBy.size ? 1 : 0) + (fPayVia.size ? 1 : 0) + (fShow !== 'all' ? 1 : 0); }
+
+function filteredEntries(s, all){
+  const q = entryQuery.trim().toLowerCase();
+  const list = all.filter(e =>
+    (!fPaidBy.size || fPaidBy.has(e.paidBy)) &&
+    (!fPayVia.size || fPayVia.has(e.payVia || '')) &&
+    (fShow === 'all' || (fShow === 'everyone') === s.members.every(m => e.splitAmong.includes(m))) &&
+    (!q || [e.purpose, e.note, e.paidBy, e.payVia, String(e.amount)].some(v => (v || '').toLowerCase().includes(q))));
+  // `all` is in Sl No. order; sorts are stable, so ties keep it. Always ascending.
+  if(entrySort === 'name') list.sort((a, b) => a.paidBy.localeCompare(b.paidBy, undefined, { sensitivity: 'base' }));
+  else if(entrySort === 'amount') list.sort((a, b) => a.amount - b.amount);
+  return list;
+}
+
+function renderEntryTools(all){
+  $('entryTools').hidden = $('entrySortBar').hidden = all.length < 2;
+  document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === entrySort));
+  const n = filterCount();
+  $('entryFilterCount').hidden = !n;
+  $('entryFilterCount').textContent = n;
+  $('entryFilterBtn').classList.toggle('on', !!n);
+}
+
+$('entrySearch').addEventListener('input', function(){ entryQuery = this.value; renderEntries(); });
+// Tap Sl No. / Name / Amount (or a desktop column header) to sort by it.
+document.addEventListener('click', e => {
+  const b = e.target.closest('#view-split [data-sort]');
+  if(!b) return;
+  entrySort = b.dataset.sort;
+  renderEntries();
+});
+$('entryFilterNote').addEventListener('click', e => {
+  if(e.target.closest('[data-clear-filter]')){ resetEntryFilters(); renderEntries(); }
+});
+
+/* --- filter popup: changes apply straight away --- */
+function renderFilterSheet(){
+  const s = cur();
+  const all = liveEntries(s);
+  const chip = (attr, v, on, label) =>
+    `<button type="button" class="f-chip ${on ? 'on' : ''}" ${attr}="${escapeHtml(v)}">${escapeHtml(label || v)}</button>`;
+  const payers = dedupe(s.members.concat(all.map(e => e.paidBy))).filter(p => all.some(e => e.paidBy === p));
+  const methods = dedupe(all.map(e => e.payVia).filter(Boolean));
+  $('fPaidBy').innerHTML = payers.map(p => chip('data-paid', p, fPaidBy.has(p))).join('') || '<span class="hint">No one yet</span>';
+  $('fPayVia').innerHTML = methods.map(m => chip('data-via', m, fPayVia.has(m))).join('') || '<span class="hint">No methods yet</span>';
+  document.querySelectorAll('#fShow [data-show]').forEach(b => b.classList.toggle('on', b.dataset.show === fShow));
+  const shown = filteredEntries(s, sortedEntries(s)).length;
+  $('fShowBtn').textContent = `Show ${shown} entr${shown === 1 ? 'y' : 'ies'}`;
+}
+$('entryFilterBtn').onclick = () => { renderFilterSheet(); openSheet('filterSheet'); };
+$('filterSheet').addEventListener('click', e => {
+  const paid = e.target.closest('[data-paid]'), via = e.target.closest('[data-via]'), show = e.target.closest('[data-show]');
+  const toggle = (set, v) => { set.has(v) ? set.delete(v) : set.add(v); };
+  if(paid) toggle(fPaidBy, paid.dataset.paid);
+  else if(via) toggle(fPayVia, via.dataset.via);
+  else if(show) fShow = show.dataset.show;
+  else return;
+  renderFilterSheet();
+  renderEntries();
+});
+$('fClearBtn').onclick = () => { fPaidBy = new Set(); fPayVia = new Set(); fShow = 'all'; renderFilterSheet(); renderEntries(); };
+$('fShowBtn').onclick = () => closeSheet('filterSheet');
+
 function renderEntries(){
   const s = cur();
-  const entries = sortedEntries(s);
+  const all = sortedEntries(s);
+  slNo = new Map(all.map((e, i) => [e.id, i + 1]));
+  // Drop filters for people / methods that no longer have entries.
+  fPaidBy = new Set([...fPaidBy].filter(p => all.some(e => e.paidBy === p)));
+  fPayVia = new Set([...fPayVia].filter(m => all.some(e => e.payVia === m)));
+  const entries = filteredEntries(s, all);
   const body = $('entryBody');
   const c = escapeHtml(s.currency);
 
-  $('entryEmpty').style.display = entries.length ? 'none' : 'block';
-  $('entryTable').style.display = entries.length ? '' : 'none';
-
+  renderEntryTools(all);
+  const filtering = all.length && (entryQuery.trim() || filterCount());
+  $('entryFilterNote').hidden = !filtering;
+  $('entryFilterNote').innerHTML = filtering
+    ? `${entries.length ? `Showing ${entries.length} of ${all.length}` : 'No entries match'} · <button type="button" class="btn-link-text" data-clear-filter>Clear</button>`
+    : '';
+  // Small total under "Entries" — of what's shown, so it follows search / filters.
   const spent = entries.filter(e => e.sign < 0).reduce((t, e) => t + e.amount, 0);
   const recv = entries.filter(e => e.sign > 0).reduce((t, e) => t + e.amount, 0);
-  $('totalsStrip').innerHTML = entries.length ? `
-    <span>Spent <b class="neg">−${c}${formatNum(spent)}</b></span>
-    ${recv ? `<span>Received <b class="pos">+${c}${formatNum(recv)}</b></span>` : ''}
-    <span>Net cost <b>${c}${formatNum(spent - recv)}</b></span>` : '';
+  $('entriesTotal').innerHTML = entries.length
+    ? `Total <b>${c}${formatNum(spent)}</b>${recv ? ` · received <b>${c}${formatNum(recv)}</b>` : ''}${filtering ? ' <span class="muted">(filtered)</span>' : ''}`
+    : '';
+  $('entryEmpty').style.display = all.length ? 'none' : 'block';
+  $('entryTable').style.display = entries.length ? '' : 'none';
+
+  // Ticked entries that are deleted or filtered out drop out of the selection.
+  visibleEntries = entries;
+  selectedEntries = new Set(entries.filter(e => selectedEntries.has(e.id)).map(e => e.id));
+  renderSelectionBar();
 
   body.innerHTML = entries.map(e => {
     const excluded = s.members.filter(m => !e.splitAmong.includes(m));
@@ -852,27 +917,58 @@ function renderEntries(){
     const signCls = e.sign < 0 ? 'minus' : 'plus';
     const [d, t] = formatDateTime(e.datetime);
     const onBehalf = e.addedBy && e.addedBy !== e.paidBy;
-    return `<tr class="row-${signCls}" data-id="${e.id}">
+    const picked = selectedEntries.has(e.id);
+    return `<tr class="row-${signCls}${picked ? ' picked' : ''}" data-id="${e.id}">
+      <td class="c-check" data-stop><span class="sl-no">${slNo.get(e.id)}</span><label class="ent-check"><input type="checkbox" data-pick="${e.id}" ${picked ? 'checked' : ''} aria-label="Select ${escapeHtml(e.purpose)}"></label></td>
       <td class="cell-date c-date" data-label="Date">${d}<small>${t}</small></td>
       <td class="num c-amount" data-label="Amount"><span class="amt ${signCls}">${e.sign < 0 ? '−' : '+'}${c}${formatNum(e.amount)}</span></td>
-      <td class="c-purpose" data-label="Purpose"><span class="purpose-wrap" data-full="${escapeHtml(e.purpose)}">${personAvatar(e.paidBy)}<span class="purpose-text" title="${escapeHtml(e.purpose)}">${escapeHtml(e.purpose)}</span></span></td>
+      <td class="c-purpose" data-label="Purpose"><span class="purpose-wrap">${personAvatar(e.paidBy)}<span class="purpose-text" title="${escapeHtml(e.purpose)}">${escapeHtml(e.purpose)}</span></span></td>
       <td class="c-via ${e.payVia ? '' : 'c-empty'}" data-label="Via">${escapeHtml(e.payVia || '—')}</td>
       <td class="c-by" data-label="Paid by">${escapeHtml(e.paidBy)}${onBehalf ? `<span class="sub">added by ${escapeHtml(e.addedBy)}</span>` : ''}</td>
       <td class="cell-note c-note ${e.note ? '' : 'c-empty'}" data-label="Note">${escapeHtml(e.note || '—')}</td>
       <td class="c-split" data-label="Split">${everyone ? '<span class="split-all">Everyone</span>' : `${e.splitAmong.length} of ${s.members.length}`}
         ${everyone ? '' : `<span class="excl-note">excl. <span class="excl-names">${excluded.map(escapeHtml).join(', ')}</span></span>`}</td>
-      <td class="c-m c-meta">${[escapeHtml(e.paidBy), e.payVia && escapeHtml(e.payVia), shortWhen(e.datetime) && `<span class="m-when">${shortWhen(e.datetime)}</span>`]
-        .filter(Boolean).map(x => x.startsWith('<span') ? x : `<span>${x}</span>`).join('')}</td>
-      <td class="c-m c-noteicon">${e.note ? `<button type="button" class="note-btn" data-stop data-note="${escapeHtml(e.note)}" aria-label="Show note">📝</button>` : ''}</td>
-      <td class="cell-actions edit-only">
-        <button class="btn-icon" title="Edit" data-edit="${e.id}">✏️</button>
-        <button class="btn-icon" title="Delete" data-delete="${e.id}">🗑️</button>
-      </td>
+      <td class="c-m m-sl">${slNo.get(e.id)}</td>
+      <td class="c-m m-avatar">${personAvatar(e.paidBy)}</td>
+      <td class="c-m m-name">${escapeHtml(e.paidBy)}</td>
+      <td class="c-m m-purpose">${escapeHtml(e.purpose)}</td>
+      <td class="c-m m-via">${escapeHtml(e.payVia || '')}</td>
     </tr>`;
   }).join('');
 }
 
-// "06 Oct · 10:15 pm" (year only when it isn't this year) for the compact phone cards.
+/* --- tick entries to add them up --- */
+let selectedEntries = new Set();   // entry ids
+let visibleEntries = [];
+
+function renderSelectionBar(){
+  const s = cur();
+  const picked = visibleEntries.filter(e => selectedEntries.has(e.id));
+  $('selectBar').hidden = !picked.length;
+  if(!picked.length) return;
+  const c = escapeHtml(s.currency);
+  const spent = picked.filter(e => e.sign < 0).reduce((t, e) => t + e.amount, 0);
+  const recv = picked.filter(e => e.sign > 0).reduce((t, e) => t + e.amount, 0);
+  const parts = [];
+  if(spent) parts.push(`<b class="amt minus">−${c}${formatNum(spent)}</b>`);
+  if(recv) parts.push(`<b class="amt plus">+${c}${formatNum(recv)}</b>`);
+  if(spent && recv) parts.push(`<span>net <b class="amt">${c}${formatNum(round2(spent - recv))}</b></span>`);
+  $('selectSummary').innerHTML = `<span class="sel-count">${picked.length} selected</span>${parts.join('')}`;
+  $('selectAllBtn').hidden = picked.length === visibleEntries.length;
+}
+
+$('entryBody').addEventListener('change', e => {
+  const box = e.target.closest('[data-pick]');
+  if(!box) return;
+  if(box.checked) selectedEntries.add(box.dataset.pick);
+  else selectedEntries.delete(box.dataset.pick);
+  box.closest('tr').classList.toggle('picked', box.checked);
+  renderSelectionBar();
+});
+$('selectAllBtn').onclick = () => { visibleEntries.forEach(e => selectedEntries.add(e.id)); renderEntries(); };
+$('selectClearBtn').onclick = () => { selectedEntries.clear(); renderEntries(); };
+
+// "06 Oct · 10:15 pm" (year only when it isn't this year) for the compact phone list.
 function shortWhen(local){
   const d = new Date(local);
   if(!local || isNaN(d)) return '';
@@ -881,26 +977,40 @@ function shortWhen(local){
   return `${d.toLocaleDateString('en-IN', opts)} · ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
 }
 
-// Tap the 📝 on an entry to see its note; tap a cut-off purpose ("…") to see all of it.
-document.addEventListener('click', e => {
-  const btn = e.target.closest('.note-btn');
-  let wrap = !btn && !editMode && e.target.closest('#entryBody .purpose-wrap');
-  if(wrap){
-    const text = wrap.querySelector('.purpose-text');
-    if(text.scrollWidth <= text.clientWidth) wrap = null;   // already fully visible
-  }
-  const target = btn || wrap;
-  document.querySelectorAll('.note-btn.open, .purpose-wrap.open').forEach(b => { if(b !== target) b.classList.remove('open'); });
-  if(target) target.classList.toggle('open');
+$('entryBody').addEventListener('click', (e) => {
+  if(e.target.closest('[data-stop]')) return;
+  const row = e.target.closest('tr[data-id]');
+  if(row) openEntryView(row.dataset.id);
 });
 
-$('entryBody').addEventListener('click', (e) => {
-  if(e.target.closest('[data-stop]') || !editMode) return;
-  const del = e.target.closest('[data-delete]');
-  if(del){ deleteEntry(del.dataset.delete); return; }
-  const row = e.target.closest('tr[data-id]');
-  if(row) openEntrySheet(row.dataset.id);
-});
+/* --- entry details popup: Delete · Cancel · Edit --- */
+let viewingEntryId = null;
+
+function openEntryView(id){
+  const s = cur();
+  const en = s.entries.find(x => x.id === id);
+  if(!en) return;
+  viewingEntryId = id;
+  const c = escapeHtml(s.currency);
+  const signCls = en.sign < 0 ? 'minus' : 'plus';
+  const excluded = s.members.filter(m => !en.splitAmong.includes(m));
+  const row = (label, html) => `<div class="ev-row"><span class="ev-label">${label}</span><span class="ev-value">${html}</span></div>`;
+  $('entryViewBody').innerHTML = `
+    <div class="ev-top">
+      ${personAvatar(en.paidBy)}
+      <div class="ev-purpose">${escapeHtml(en.purpose)}</div>
+      <div class="ev-amount amt ${signCls}">${en.sign < 0 ? '−' : '+'}${c}${formatNum(en.amount)}</div>
+    </div>
+    ${row(en.sign < 0 ? 'Paid by' : 'Received by', escapeHtml(en.paidBy))}
+    ${en.payVia ? row('Via', escapeHtml(en.payVia)) : ''}
+    ${row('When', escapeHtml(shortWhen(en.datetime) || '—'))}
+    ${row(`Split with (${en.splitAmong.length} of ${s.members.length})`, en.splitAmong.map(escapeHtml).join(', '))}
+    ${excluded.length ? row('Not included', `<span class="excl-names">${excluded.map(escapeHtml).join(', ')}</span>`) : ''}
+    ${en.note ? row('Note', escapeHtml(en.note)) : ''}`;
+  openSheet('entryViewSheet');
+}
+$('evEditBtn').onclick = () => { closeSheet('entryViewSheet'); openEntrySheet(viewingEntryId); };
+$('evDeleteBtn').onclick = () => deleteEntry(viewingEntryId);
 
 async function deleteEntry(id){
   const s = cur();
@@ -913,6 +1023,7 @@ async function deleteEntry(id){
     touch(en); touch(s);
   }
   closeSheet('entrySheet');
+  closeSheet('entryViewSheet');
   renderSplitDetail(s.id, true);
   if(await push({ type: 'deleteEntry', splitId: s.id, entryId: id })) toast('Entry deleted');
 }
@@ -1230,8 +1341,9 @@ $('confirmCancelBtn').onclick = () => settleConfirm(false);
 /* ---------------- SHARE / IMPORT ---------------- */
 // No server: the whole split travels inside the link. Whoever opens it gets a
 // copy; when they share back, entries are merged by id (newest edit wins).
-$('shareBtn').onclick = async () => {
-  const s = cur();
+$('shareBtn').onclick = () => shareSplit(cur());
+
+async function shareSplit(s){
   if(CLOUD && !user){ toast('Log in to share — this split comes with you'); openLogin(); return; }
   if(CLOUD){
     if(!s.shareCode){ toast('Connect to the internet to share this split'); return; }
@@ -1250,7 +1362,7 @@ $('shareBtn').onclick = async () => {
   } catch(_){
     prompt('Copy this link and send it to your group:', url);
   }
-};
+}
 
 async function renderImport(payload){
   const box = $('importBody');
@@ -1427,7 +1539,9 @@ function formatStamp(ts){ return ts ? new Date(ts).toLocaleString('en-IN', { day
 /* ---------------- CLOUD: SHARE SHEET ---------------- */
 function joinUrl(s){ return `${location.origin}${location.pathname}#/join/${s.shareCode}`; }
 
+let sharingSplit = null;   // the split the share sheet is open for (may not be the open one)
 async function openShareSheet(s){
+  sharingSplit = s;
   $('shareLink').value = joinUrl(s);
   $('shareLinkBtn').textContent = navigator.share ? 'Share' : 'Copy';
   $('shareLinkHint').innerHTML = `Anyone with this link can join after signing in.` +
@@ -1463,7 +1577,7 @@ async function renderCollaborators(s){
 }
 
 $('collabList').addEventListener('click', async e => {
-  const s = cur();
+  const s = sharingSplit;
   const rm = e.target.closest('[data-remove-user]');
   const ci = e.target.closest('[data-cancel-invite]');
   try{
@@ -1479,7 +1593,7 @@ $('collabList').addEventListener('click', async e => {
 
 $('inviteForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const s = cur();
+  const s = sharingSplit;
   const email = $('inviteEmail').value.trim();
   try{
     const result = await Cloud.invite(s, email);
@@ -1490,7 +1604,7 @@ $('inviteForm').addEventListener('submit', async e => {
 });
 
 $('shareLinkBtn').onclick = async () => {
-  const s = cur();
+  const s = sharingSplit;
   const url = joinUrl(s);
   if(navigator.share){
     try{ await navigator.share({ title: `SplitEasy · ${s.name}`, text: `Join "${s.name}" on SplitEasy and add your expenses:`, url }); return; }

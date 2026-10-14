@@ -138,11 +138,10 @@ if ("serviceWorker" in navigator) {
       <div class="split-hero-row">
         <h2 class="split-hero-title">
           <span id="detailName"></span>
-          <button type="button" class="title-edit edit-only" id="editDetailsBtn" title="Edit trip details" aria-label="Edit trip details">✎</button>
+          <button type="button" class="title-edit" id="editDetailsBtn" title="Edit trip details" aria-label="Edit trip details">✎</button>
         </h2>
         <div class="head-actions">
-          <button class="btn-primary btn-small" id="modeBtn">✎ Edit</button>
-          <button class="btn-ghost-light btn-small view-only" id="shareBtn">↗ Share</button>
+          <button class="btn-ghost-light btn-small" id="shareBtn">↗ Share</button>
         </div>
       </div>
       <div class="split-hero-meta" id="detailMeta"></div>
@@ -153,56 +152,84 @@ if ("serviceWorker" in navigator) {
       <div class="ticket-inner">
         <div class="step-head">
           <span class="step-title">People</span>
-          <span class="step-desc-inline edit-only">tap a person to edit</span>
-          <button type="button" class="people-toggle view-only" id="peopleToggle" aria-pressed="false" title="Show names">👁 <span>Names</span></button>
+          <button type="button" class="people-toggle" id="peopleToggle" aria-pressed="false" title="Show names">👁 <span>Names</span></button>
         </div>
         <div class="chip-list" id="detailMembers"></div>
-        <button type="button" class="btn-sage add-person-btn edit-only" id="addPersonBtn">＋ Add person</button>
       </div>
     </section>
 
     <!-- Entries -->
     <section class="ticket no-notch">
       <div class="ticket-inner">
+        <!-- Sticks under the top bar while the list scrolls -->
+        <div class="entries-sticky">
         <div class="entries-head">
-          <div class="step-head" style="margin:0;">
+          <div class="step-head entries-title" style="margin:0;">
             <span class="step-title">Entries</span>
+            <span class="entries-total" id="entriesTotal"></span>
           </div>
-          <div class="entries-actions edit-only">
+          <div class="entries-actions">
             <button class="btn-ghost" id="importEntriesBtn">⇪ Import</button>
             <button class="btn-primary" id="addEntryBtn">＋ Add entry</button>
           </div>
         </div>
 
-        <div class="totals-strip" id="totalsStrip"></div>
+        <!-- Search + filter, then tap a column to sort (shown once there are a few entries) -->
+        <div class="entry-tools" id="entryTools" hidden>
+          <div class="entry-search-box">
+            <input type="text" id="entrySearch" placeholder="Search entries" aria-label="Search entries" autocomplete="off" enterkeyhint="search">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+          </div>
+          <button type="button" class="filter-btn" id="entryFilterBtn" aria-label="Filter entries" title="Filter">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            <span>Filter</span><b class="filter-count" id="entryFilterCount" hidden></b>
+          </button>
+        </div>
+        <div class="entry-sortbar" id="entrySortBar" hidden>
+          <button type="button" data-sort="sl">Sl No.</button>
+          <button type="button" data-sort="name">Name</button>
+          <span></span>
+          <button type="button" data-sort="amount">Amount</button>
+        </div>
+        <div class="entry-filter-note" id="entryFilterNote" hidden></div>
+        </div>
+
 
         <div class="table-wrap">
           <table class="entry-table" id="entryTable">
             <thead>
               <tr>
+                <th class="c-check"><button type="button" class="th-sort" data-sort="sl">#</button></th>
                 <th>Date &amp; time</th>
-                <th class="num">Amount</th>
+                <th class="num"><button type="button" class="th-sort" data-sort="amount">Amount</button></th>
                 <th>Purpose</th>
                 <th>Pay via</th>
-                <th>Paid by</th>
+                <th><button type="button" class="th-sort" data-sort="name">Paid by</button></th>
                 <th>Note</th>
                 <th>Split with</th>
-                <th></th>
               </tr>
             </thead>
             <tbody id="entryBody"></tbody>
           </table>
         </div>
-        <div class="empty-note" id="entryEmpty"></div>
+        <div class="empty-note" id="entryEmpty">No entries yet. Tap <strong>＋ Add entry</strong> to log the first expense.</div>
+        <!-- Total of the ticked entries (stays in view while you scroll the list) -->
+        <div class="select-bar" id="selectBar" hidden>
+          <div class="select-summary" id="selectSummary"></div>
+          <button type="button" class="btn-link-text" id="selectAllBtn">Select all</button>
+          <button type="button" class="btn-link-text" id="selectClearBtn">Clear</button>
+        </div>
       </div>
     </section>
 
     <!-- Settle -->
-    <section class="ticket no-notch">
+    <section class="ticket no-notch settle-card" id="settleCard">
       <div class="ticket-inner">
-        <div class="step-head">
+        <button type="button" class="step-head settle-toggle" id="settleToggle" aria-expanded="false" aria-controls="settleBody">
           <span class="step-title">Settle up</span>
-        </div>
+          <span class="settle-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="settle-body" id="settleBody">
         <div id="downloadArea">
           <div class="result-grid" id="statGrid"></div>
           <div class="section-label">Who paid / owes what</div>
@@ -212,6 +239,7 @@ if ("serviceWorker" in navigator) {
         </div>
         <div class="form-actions">
           <button class="btn-ghost" id="exportBtn">⬇ Export</button>
+        </div>
         </div>
       </div>
     </section>
@@ -230,6 +258,50 @@ if ("serviceWorker" in navigator) {
 </main>
 
 <!-- ============ ENTRY SHEET ============ -->
+<!-- Filter entries: paid by / pay via / show -->
+<div class="sheet-backdrop" id="filterSheet" hidden>
+  <div class="sheet sheet-sm filter-sheet">
+    <div class="sheet-head">
+      <h3>Filter</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="filter-label">Paid by</div>
+      <div class="filter-chips" id="fPaidBy"></div>
+      <div class="filter-label">Pay via</div>
+      <div class="filter-chips" id="fPayVia"></div>
+      <div class="filter-label">Show</div>
+      <div class="filter-chips" id="fShow">
+        <button type="button" class="f-chip" data-show="all">All</button>
+        <button type="button" class="f-chip" data-show="everyone">Everyone included</button>
+        <button type="button" class="f-chip" data-show="excluded">Someone excluded</button>
+      </div>
+    </div>
+    <div class="sheet-foot">
+      <button type="button" class="btn-ghost" id="fClearBtn">Clear all</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn-primary" id="fShowBtn">Show entries</button>
+    </div>
+  </div>
+</div>
+
+<!-- Entry details (tap an entry): Delete · Cancel · Edit -->
+<div class="sheet-backdrop" id="entryViewSheet" hidden>
+  <div class="sheet sheet-sm entry-view">
+    <div class="sheet-head">
+      <h3>Entry</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body" id="entryViewBody"></div>
+    <div class="sheet-foot">
+      <button type="button" class="btn-ghost danger" id="evDeleteBtn">🗑 Delete</button>
+      <span style="flex:1"></span>
+      <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+      <button type="button" class="btn-primary" id="evEditBtn">✎ Edit</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="entrySheet" hidden>
   <form class="sheet" id="entryForm" autocomplete="off">
     <div class="sheet-head">
@@ -419,15 +491,17 @@ if ("serviceWorker" in navigator) {
       <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
+      <div class="profile-avatar person-photo" id="personPhoto" hidden></div>
+      <label class="field-label req" for="personName">Name</label>
+      <input type="text" id="personName" placeholder="e.g. Rahul" maxlength="40" required>
+      <div style="height:14px"></div>
       <label class="field-label" for="personEmail">Email <span class="opt">optional</span></label>
       <input type="email" id="personEmail" placeholder="friend@gmail.com" maxlength="120" inputmode="email" autocapitalize="off">
       <div class="person-lookup" id="personLookup" hidden></div>
       <div class="hint" id="personEmailHint">With an email, the split is shared with them. If they already use SplitEasy, their name and photo fill in.</div>
-      <div style="height:14px"></div>
-      <label class="field-label req" for="personName">Name</label>
-      <input type="text" id="personName" placeholder="e.g. Rahul" maxlength="40" required>
     </div>
     <div class="sheet-foot">
+      <button type="button" class="btn-ghost danger" id="personDeleteBtn">🗑 Delete</button>
       <span style="flex:1"></span>
       <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
       <button type="submit" class="btn-primary" id="personSaveBtn">Add person</button>
@@ -448,8 +522,8 @@ if ("serviceWorker" in navigator) {
       <div class="profile-email" id="profileEmail"></div>
       <div class="profile-meta" id="profileMeta"></div>
       <div class="profile-actions">
-        <button type="button" class="btn-ghost" id="profileRenameBtn">✎ Change name</button>
-        <button type="button" class="btn-ghost danger" id="profileLogoutBtn">Log out</button>
+        <button type="button" class="btn-ghost" data-close-sheet>Cancel</button>
+        <button type="button" class="btn-danger" id="profileLogoutBtn">Log out</button>
       </div>
     </div>
   </div>

@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = __dirname;
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3001;
 const BLOCKED = /(^|[\\/])(\.env|\.git|node_modules)([\\/.]|$)/;   // never serve secrets or repo internals
 
 const TYPES = {
