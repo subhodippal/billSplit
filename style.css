@@ -1047,7 +1047,7 @@ body.no-scroll{ overflow:hidden; }
 }
 .entry-filter-note{ font-size: 12.5px; color: var(--ink-soft); margin: -2px 0 8px; }
 
-/* Sl No. | Name | ..... Time ..... | Amount — tap to sort, tap again to flip ▲ / ▼ */
+/* ↺ | #  🧑  🕒  ₹ — tap an icon to sort by it, tap again to flip ▲ / ▼ */
 .entry-sortbar{
   display:grid; grid-template-columns: auto auto 1fr auto; gap: 0 14px; align-items:center;
   padding: 6px 12px; margin-bottom: 4px; border-radius: 9px; background: var(--paper-dim);
@@ -1060,7 +1060,26 @@ body.no-scroll{ overflow:hidden; }
 .entry-sortbar button.on, .th-sort.on{ color: var(--ink); }
 .entry-sortbar button.on::after, .th-sort.on::after{ content: " ▲"; font-size: 9px; color: var(--sage); }
 .entry-sortbar button.on.desc::after, .th-sort.on.desc::after{ content: " ▼"; }
-.entry-sortbar .sort-mid{ justify-self: center; }
+
+/* ↺ back to the default order (Sl No. ▲). Its slot is always there (just invisible on the default
+   order) so Sl No. / Name / Time / Amount stay put when it appears. */
+.entry-sortbar{ display:flex; grid-template-columns: none; gap: 8px; }
+/* the four sort icons, spread out; the active one becomes a pill with ▲ / ▼ */
+.entry-sortbar .sort-icons{ flex: 1; min-width: 0; display:flex; align-items:center; justify-content: space-between; gap: 4px; }
+.entry-sortbar .sort-icon{
+  flex: 1 1 0; max-width: 64px; height: 28px; padding: 0 6px; border-radius: 999px;
+  border: 1px solid transparent; display:inline-flex; align-items:center; justify-content:center; gap: 2px;
+}
+.entry-sortbar .sort-icon:hover{ background: var(--sage-bg); }
+.entry-sortbar .sort-icon.on{ background: var(--sage-bg); border-color: var(--sage); color: var(--sage); }
+.entry-sortbar .sort-glyph{ font-size: 15px; line-height: 1; filter: grayscale(0.35); opacity: 0.85; }
+.entry-sortbar .sort-icon.on .sort-glyph{ filter: none; opacity: 1; }
+.entry-sortbar .sort-glyph.is-text{ font-family:'IBM Plex Mono',monospace; font-weight: 700; font-size: 15px; }
+.entry-sortbar .sort-reset.is-off{ visibility: hidden; pointer-events: none; }
+.entry-sortbar .sort-reset{
+  display:grid; place-items:center; padding: 2px; margin: 0 -6px 0 -4px; border-radius: 6px; color: var(--sage);
+}
+.entry-sortbar .sort-reset:hover{ background: var(--sage-bg); }
 @media (min-width: 761px){ .entry-sortbar{ display:none; } }   /* desktop sorts from the table headers */
 
 /* Sl No. above the checkbox (desktop; phones show it before the name) */

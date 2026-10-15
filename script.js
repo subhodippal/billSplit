@@ -883,6 +883,10 @@ function filteredEntries(s, all){
 
 function renderEntryTools(all){
   $('entryTools').hidden = $('entrySortBar').hidden = all.length < 2;
+  const sorted = entrySort !== 'sl' || entrySortDir !== 1;   // anything but the default Sl No. ▲
+  $('entrySortReset').classList.toggle('is-off', !sorted);   // keeps its space, so the labels never shift
+  $('entrySortReset').tabIndex = sorted ? 0 : -1;
+  $('sortCurrency').textContent = cur().currency;
   document.querySelectorAll('[data-sort]').forEach(b => {
     b.classList.toggle('on', b.dataset.sort === entrySort);
     b.classList.toggle('desc', b.dataset.sort === entrySort && entrySortDir < 0);
@@ -902,6 +906,7 @@ document.addEventListener('click', e => {
   entrySort = b.dataset.sort;
   renderEntries();
 });
+$('entrySortReset').onclick = () => { entrySort = 'sl'; entrySortDir = 1; renderEntries(); };
 $('entryFilterNote').addEventListener('click', e => {
   if(e.target.closest('[data-clear-filter]')){ resetEntryFilters(); renderEntries(); }
 });

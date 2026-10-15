@@ -186,10 +186,16 @@ if ("serviceWorker" in navigator) {
           </button>
         </div>
         <div class="entry-sortbar" id="entrySortBar" hidden>
-          <button type="button" data-sort="sl">Sl No.</button>
-          <button type="button" data-sort="name">Name</button>
-          <button type="button" class="sort-mid" data-sort="time">Time</button>
-          <button type="button" data-sort="amount">Amount</button>
+          <button type="button" class="sort-reset" id="entrySortReset" title="Back to the default order (Sl No.)" aria-label="Reset sort">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 4v5h5"/></svg>
+          </button>
+          <!-- tap an icon to sort by it, again to flip ▲ / ▼ -->
+          <div class="sort-icons" role="group" aria-label="Sort entries">
+            <button type="button" class="sort-icon" data-sort="sl" title="Sort by Sl No." aria-label="Sort by Sl No."><span class="sort-glyph is-text">#</span></button>
+            <button type="button" class="sort-icon" data-sort="name" title="Sort by name (paid by)" aria-label="Sort by name"><span class="sort-glyph">🧑</span></button>
+            <button type="button" class="sort-icon" data-sort="time" title="Sort by date &amp; time" aria-label="Sort by time"><span class="sort-glyph">🕒</span></button>
+            <button type="button" class="sort-icon" data-sort="amount" title="Sort by amount" aria-label="Sort by amount"><span class="sort-glyph is-text" id="sortCurrency">₹</span></button>
+          </div>
         </div>
         <div class="entry-filter-note" id="entryFilterNote" hidden></div>
         </div>
