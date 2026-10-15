@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- SplitEasy: one receipt, torn into two shares -->
+  <defs>
+    <clipPath id="l"><rect x="0" y="0" width="246" height="512"/></clipPath>
+    <clipPath id="r"><rect x="266" y="0" width="246" height="512"/></clipPath>
+    <g id="receipt">
+      <path d="M126 104H386V396L369.75 418L353.50 396L337.25 418L321 396L304.75 418L288.50 396L272.25 418L256 396L239.75 418L223.50 396L207.25 418L191 396L174.75 418L158.50 396L142.25 418L126 396Z" fill="#F4EFE1"/>
+      <rect x="160" y="152" width="192" height="18" rx="9" fill="#EDC873"/>
+      <rect x="160" y="198" width="150" height="18" rx="9" fill="#EDC873"/>
+      <rect x="160" y="244" width="176" height="18" rx="9" fill="#EDC873"/>
+      <rect x="160" y="310" width="192" height="30" rx="15" fill="#E0982A"/>
+    </g>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#1B2420"/>
+  <g clip-path="url(#l)"><use href="#receipt" transform="translate(-6 -18)"/></g>
+  <g clip-path="url(#r)"><use href="#receipt" transform="translate(6 18)"/></g>
+</svg>

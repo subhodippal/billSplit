@@ -20,8 +20,7 @@ document.getElementById('installBtn').addEventListener('click', async () => {
 /* ---------------- STORAGE ---------------- */
 const USER_KEY = 'se_user';
 const SPLITS_KEY = 'se_splits';
-const DEFAULT_PAY_MODES = ['Cash', 'UPI', 'Card', 'Bank transfer'];
-const NEW_OPTION = '__new__';
+const DEFAULT_PAY_MODES = ['Cash', 'UPI', 'Card'];
 const DEFAULT_CURRENCY = '₹';   // existing splits keep whatever currency they were made with
 
 function load(key, fallback){
@@ -305,6 +304,52 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if(e.key !== 'Escape') return;
   document.querySelectorAll('.sheet-backdrop:not([hidden])').forEach(s => closeSheet(s.id));
+});
+
+// Pull a sheet down to close it: drag from the header anywhere, or from the body once it's scrolled to the top.
+let sheetDrag = null;
+document.addEventListener('touchstart', (e) => {
+  const sheet = e.target.closest('.sheet');
+  if(!sheet || e.touches.length !== 1) return;
+  const body = e.target.closest('.sheet-body');
+  if(body && body.scrollTop > 0) return;
+  sheetDrag = { sheet, y0: e.touches[0].clientY, t0: Date.now(), dy: 0, active: false };
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if(!sheetDrag) return;
+  const dy = e.touches[0].clientY - sheetDrag.y0;
+  if(!sheetDrag.active){
+    if(dy < -4){ sheetDrag = null; return; }   // pushing up = normal scrolling
+    if(dy < 8) return;
+    sheetDrag.active = true;
+    sheetDrag.sheet.style.transition = 'none';
+  }
+  e.preventDefault();
+  sheetDrag.dy = Math.max(0, dy - 8);
+  sheetDrag.sheet.style.transform = `translateY(${sheetDrag.dy}px)`;
+}, { passive: false });
+document.addEventListener('touchend', () => {
+  if(!sheetDrag) return;
+  const { sheet, dy, t0, active } = sheetDrag;
+  sheetDrag = null;
+  if(!active) return;
+  const fling = dy > 40 && dy / (Date.now() - t0) > 0.6;   // quick flick
+  sheet.style.transition = 'transform .2s ease';
+  if(dy > sheet.offsetHeight * 0.25 || dy > 140 || fling){
+    sheet.style.transform = 'translateY(100%)';
+    setTimeout(() => {
+      closeSheet(sheet.closest('.sheet-backdrop').id);
+      sheet.style.transition = sheet.style.transform = '';
+    }, 200);
+  } else {
+    sheet.style.transform = '';
+    setTimeout(() => { sheet.style.transition = ''; }, 200);
+  }
+});
+document.addEventListener('touchcancel', () => {
+  if(!sheetDrag) return;
+  sheetDrag.sheet.style.transition = sheetDrag.sheet.style.transform = '';
+  sheetDrag = null;
 });
 
 let toastTimer;
@@ -808,7 +853,7 @@ function sortedEntries(s){
 
 // Search / filter / sort for the entries list (filters reset per split, sort is kept).
 // Sl No. is an entry's place in date order, so it stays the same whatever is sorted or filtered.
-let entryQuery = '', entrySort = 'sl';
+let entryQuery = '', entrySort = 'sl', entrySortDir = 1;   // 1 = ascending, -1 = descending
 let fPaidBy = new Set(), fPayVia = new Set(), fShow = 'all';   // empty set = everyone / every method
 let slNo = new Map();   // entry id -> 1, 2, 3…
 
@@ -825,15 +870,23 @@ function filteredEntries(s, all){
     (!fPayVia.size || fPayVia.has(e.payVia || '')) &&
     (fShow === 'all' || (fShow === 'everyone') === s.members.every(m => e.splitAmong.includes(m))) &&
     (!q || [e.purpose, e.note, e.paidBy, e.payVia, String(e.amount)].some(v => (v || '').toLowerCase().includes(q))));
-  // `all` is in Sl No. order; sorts are stable, so ties keep it. Always ascending.
-  if(entrySort === 'name') list.sort((a, b) => a.paidBy.localeCompare(b.paidBy, undefined, { sensitivity: 'base' }));
-  else if(entrySort === 'amount') list.sort((a, b) => a.amount - b.amount);
+  // `all` is in Sl No. order; sorts are stable, so ties keep it.
+  const cmp = {
+    sl: (a, b) => slNo.get(a.id) - slNo.get(b.id),
+    time: (a, b) => (a.datetime || '').localeCompare(b.datetime || ''),
+    name: (a, b) => a.paidBy.localeCompare(b.paidBy, undefined, { sensitivity: 'base' }),
+    amount: (a, b) => a.amount - b.amount
+  }[entrySort];
+  if(cmp) list.sort((a, b) => entrySortDir * cmp(a, b));
   return list;
 }
 
 function renderEntryTools(all){
   $('entryTools').hidden = $('entrySortBar').hidden = all.length < 2;
-  document.querySelectorAll('[data-sort]').forEach(b => b.classList.toggle('on', b.dataset.sort === entrySort));
+  document.querySelectorAll('[data-sort]').forEach(b => {
+    b.classList.toggle('on', b.dataset.sort === entrySort);
+    b.classList.toggle('desc', b.dataset.sort === entrySort && entrySortDir < 0);
+  });
   const n = filterCount();
   $('entryFilterCount').hidden = !n;
   $('entryFilterCount').textContent = n;
@@ -841,10 +894,11 @@ function renderEntryTools(all){
 }
 
 $('entrySearch').addEventListener('input', function(){ entryQuery = this.value; renderEntries(); });
-// Tap Sl No. / Name / Amount (or a desktop column header) to sort by it.
+// Tap Sl No. / Name / Time / Amount (or a desktop column header) to sort by it; tap again to flip ▲ / ▼.
 document.addEventListener('click', e => {
   const b = e.target.closest('#view-split [data-sort]');
   if(!b) return;
+  entrySortDir = b.dataset.sort === entrySort ? -entrySortDir : 1;
   entrySort = b.dataset.sort;
   renderEntries();
 });
@@ -932,7 +986,8 @@ function renderEntries(){
       <td class="c-m m-avatar">${personAvatar(e.paidBy)}</td>
       <td class="c-m m-name">${escapeHtml(e.paidBy)}</td>
       <td class="c-m m-purpose">${escapeHtml(e.purpose)}</td>
-      <td class="c-m m-via">${escapeHtml(e.payVia || '')}</td>
+      <td class="c-m m-split${everyone ? ' all' : ''}">${everyone ? 'All'
+        : excluded.length < e.splitAmong.length ? `Exc ${excluded.length}` : `Inc ${e.splitAmong.length}`}</td>
     </tr>`;
   }).join('');
 }
@@ -995,6 +1050,12 @@ function openEntryView(id){
   const signCls = en.sign < 0 ? 'minus' : 'plus';
   const excluded = s.members.filter(m => !en.splitAmong.includes(m));
   const row = (label, html) => `<div class="ev-row"><span class="ev-label">${label}</span><span class="ev-value">${html}</span></div>`;
+  // Everyone, or the full picture: who's in and who's left out.
+  const names = list => list.map(escapeHtml).join(', ');
+  const splitRow = !excluded.length
+    ? row('Split with', `<span class="split-all">Everyone (${s.members.length})</span>`)
+    : row(`Included (${en.splitAmong.length} of ${s.members.length})`, names(en.splitAmong)) +
+      row(`Excluded (${excluded.length})`, `<span class="excl-names">${names(excluded)}</span>`);
   $('entryViewBody').innerHTML = `
     <div class="ev-top">
       ${personAvatar(en.paidBy)}
@@ -1004,8 +1065,7 @@ function openEntryView(id){
     ${row(en.sign < 0 ? 'Paid by' : 'Received by', escapeHtml(en.paidBy))}
     ${en.payVia ? row('Via', escapeHtml(en.payVia)) : ''}
     ${row('When', escapeHtml(shortWhen(en.datetime) || '—'))}
-    ${row(`Split with (${en.splitAmong.length} of ${s.members.length})`, en.splitAmong.map(escapeHtml).join(', '))}
-    ${excluded.length ? row('Not included', `<span class="excl-names">${excluded.map(escapeHtml).join(', ')}</span>`) : ''}
+    ${splitRow}
     ${en.note ? row('Note', escapeHtml(en.note)) : ''}`;
   openSheet('entryViewSheet');
 }
@@ -1043,7 +1103,8 @@ function openEntrySheet(entryId){
   $('eSubmitBtn').textContent = en ? 'Save changes' : 'Add entry';
   $('eDeleteBtn').style.display = en ? '' : 'none';
 
-  $('eDate').value = en ? en.datetime : nowLocal();
+  [$('eDay').value, $('eTime').value] = (en ? en.datetime : nowLocal()).split('T');
+  $('eCur').textContent = s.currency;
   $('eAmount').value = en ? en.amount : '';
   setSign(en ? en.sign : -1);
   $('ePurpose').value = en ? en.purpose : '';
@@ -1051,6 +1112,7 @@ function openEntrySheet(entryId){
 
   // Paid by defaults to the logged-in user (who may be new to a shared split)
   fillPaidBy(en ? en.paidBy : me());
+  dropOldDefaultPayMode(s);
   fillPayVia(en ? en.payVia : (lastPayVia(s) || s.payModes[0]));
   renderSplitPills(en ? en.splitAmong : s.members.concat(hasName(s.members, me()) ? [] : [me()]));
   $('purposeList').innerHTML = dedupe(liveEntries(s).map(x => x.purpose)).map(p => `<option value="${escapeHtml(p)}">`).join('');
@@ -1080,45 +1142,108 @@ function fillPaidBy(selected){
   const names = s.members.slice();
   if(!hasName(names, me())) names.push(me());
   if(selected && !names.includes(selected)) names.push(selected);
-  fillSelect($('ePaidBy'), names, selected, '＋ Add new person…', n => n === me() ? `${n} (you)` : n);
+  fillChips('ePaidBy', names, selected || names[0], n => `${personAvatar(n)}<span>${escapeHtml(n === me() ? `${n} (you)` : n)}</span>`);
+}
+
+// "Bank transfer" used to be a default method; drop it from older splits unless an entry actually used it.
+function dropOldDefaultPayMode(s){
+  const i = s.payModes.findIndex(m => m.toLowerCase() === 'bank transfer');
+  if(i < 0 || liveEntries(s).some(e => (e.payVia || '').toLowerCase() === 'bank transfer')) return;
+  s.payModes.splice(i, 1);
+  touch(s);
+  push({ type: 'saveSplitMeta', splitId: s.id });
 }
 
 function fillPayVia(selected){
   const s = cur();
   const modes = s.payModes.slice();
   if(selected && !modes.includes(selected)) modes.push(selected);
-  fillSelect($('ePayVia'), modes, selected, '＋ Add new…');
+  fillChips('ePayVia', modes, selected || '', m => escapeHtml(m));
+  $('ePayViaChips').insertAdjacentHTML('beforeend',
+    '<button type="button" class="ef-chip ef-chip-add" data-manage aria-label="Add or edit payment methods">＋ Add</button>');
 }
 
-function fillSelect(sel, values, selected, newLabel, labelFn){
-  sel.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(labelFn ? labelFn(v) : v)}</option>`).join('') +
-    `<option value="${NEW_OPTION}">${newLabel}</option>`;
-  sel.value = values.includes(selected) ? selected : (values[0] || '');
-  sel.dataset.prev = sel.value;
+// Single-choice chips backed by a hidden input (#id holds the value, #idChips the chips).
+function fillChips(id, values, selected, labelFn){
+  $(id).value = values.includes(selected) ? selected : '';
+  $(id + 'Chips').innerHTML = values.map(v =>
+    `<button type="button" class="ef-chip${v === $(id).value ? ' on' : ''}" data-value="${escapeHtml(v)}" aria-pressed="${v === $(id).value}">${labelFn(v)}</button>`
+  ).join('');
 }
 
-$('ePaidBy').addEventListener('change', async function(){
-  if(this.value !== NEW_OPTION){ this.dataset.prev = this.value; return; }
-  const name = cleanName(prompt('Name of the person who paid:') || '');
-  if(!name){ this.value = this.dataset.prev; return; }
-  const s = cur();
-  const added = s.members.find(m => m.toLowerCase() === name.toLowerCase()) || name;
-  const checked = getCheckedSplit();
-  if(!await ensurePeople(s, [added])) return;
-  fillPaidBy(added);
-  renderSplitPills(dedupe(checked.concat(added)));
-  renderMembers();
-  toast(`${added} added to the group`);
+$('ePaidByChips').addEventListener('click', e => {
+  const chip = e.target.closest('.ef-chip');
+  if(chip) fillPaidBy(chip.dataset.value);
+});
+// Pay via is optional: tapping the chosen method again clears it.
+$('ePayViaChips').addEventListener('click', e => {
+  const chip = e.target.closest('.ef-chip');
+  if(!chip) return;
+  if(chip.hasAttribute('data-manage')){ openPayModes(); return; }
+  fillPayVia(chip.dataset.value === $('ePayVia').value ? '' : chip.dataset.value);
 });
 
-$('ePayVia').addEventListener('change', function(){
-  if(this.value !== NEW_OPTION){ this.dataset.prev = this.value; return; }
-  const mode = cleanName(prompt('New payment method (e.g. Paytm, GPay, Credit card):') || '');
-  if(!mode){ this.value = this.dataset.prev; return; }
+/* --- Payment methods popup: add / rename / remove --- */
+function openPayModes(){
+  renderPayModes();
+  $('pmNew').value = '';
+  openSheet('payModesSheet');
+}
+
+function renderPayModes(){
+  const s = cur();
+  $('pmList').innerHTML = s.payModes.length
+    ? s.payModes.map((m, i) => `<div class="pm-row">
+        <input type="text" value="${escapeHtml(m)}" data-pm="${i}" maxlength="40" aria-label="Rename ${escapeHtml(m)}">
+        <button type="button" class="pm-del" data-pm-del="${i}" aria-label="Remove ${escapeHtml(m)}" title="Remove">🗑</button>
+      </div>`).join('')
+    : '<div class="hint" style="margin:0 0 4px;">No payment methods yet.</div>';
+}
+
+function savePayModes(s, selected){
+  touch(s);
+  push({ type: 'saveSplitMeta', splitId: s.id });
+  renderPayModes();
+  fillPayVia(selected);
+}
+
+$('pmAddForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const mode = cleanName($('pmNew').value);
+  if(!mode) return;
   const s = cur();
   const existing = s.payModes.find(m => m.toLowerCase() === mode.toLowerCase());
-  fillPayVia(existing || mode);
-  if(!existing){ s.payModes.push(mode); touch(s); push({ type: 'saveSplitMeta', splitId: s.id }); }
+  if(existing){ toast(`${existing} is already there`); return; }
+  s.payModes.push(mode);
+  $('pmNew').value = '';
+  savePayModes(s, mode);   // pick the new one for this entry
+});
+
+$('pmList').addEventListener('change', e => {
+  const input = e.target.closest('[data-pm]');
+  if(!input) return;
+  const s = cur();
+  const i = +input.dataset.pm;
+  const old = s.payModes[i];
+  const name = cleanName(input.value);
+  if(!name){ input.value = old; return; }
+  if(name === old) return;
+  if(s.payModes.some((m, j) => j !== i && m.toLowerCase() === name.toLowerCase())){
+    toast(`${name} is already there`); input.value = old; return;
+  }
+  s.payModes[i] = name;
+  savePayModes(s, $('ePayVia').value === old ? name : $('ePayVia').value);
+});
+$('pmList').addEventListener('keydown', e => {
+  if(e.key === 'Enter' && e.target.matches('[data-pm]')){ e.preventDefault(); e.target.blur(); }
+});
+
+$('pmList').addEventListener('click', e => {
+  const btn = e.target.closest('[data-pm-del]');
+  if(!btn) return;
+  const s = cur();
+  const [removed] = s.payModes.splice(+btn.dataset.pmDel, 1);
+  savePayModes(s, $('ePayVia').value === removed ? '' : $('ePayVia').value);
 });
 
 function renderSplitPills(selected){
@@ -1160,12 +1285,12 @@ $('entryForm').addEventListener('submit', async (e) => {
   const amount = parseFloat($('eAmount').value);
   const purpose = $('ePurpose').value.trim();
   const paidBy = $('ePaidBy').value;
-  const payVia = $('ePayVia').value === NEW_OPTION ? '' : $('ePayVia').value;
+  const payVia = $('ePayVia').value;
   const splitAmong = getCheckedSplit();
 
   if(!(amount > 0)){ toast('Enter an amount greater than 0'); $('eAmount').focus(); return; }
   if(!purpose){ toast('What was it for?'); $('ePurpose').focus(); return; }
-  if(!paidBy || paidBy === NEW_OPTION){ toast('Choose who paid'); return; }
+  if(!paidBy){ toast('Choose who paid'); return; }
   if(splitAmong.length === 0){ toast('Pick at least one person to share this with'); return; }
 
   // Anyone involved becomes a group member
@@ -1181,7 +1306,7 @@ $('entryForm').addEventListener('submit', async (e) => {
 
 async function saveEntryFromForm(s, { paidBy, payVia, purpose, amount, splitAmong }){
   const data = {
-    datetime: $('eDate').value || nowLocal(),
+    datetime: $('eDay').value ? `${$('eDay').value}T${($('eTime').value || '00:00').slice(0, 5)}` : nowLocal(),
     amount: round2(amount),
     sign: entrySign,
     purpose, payVia, paidBy,

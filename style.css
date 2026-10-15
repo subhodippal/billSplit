@@ -49,7 +49,7 @@ a{ color: inherit; }
   gap: 12px;
 }
 .brand{ display:flex; align-items:center; gap:10px; text-decoration:none; }
-.brand-mark{ font-size: 24px; }
+.brand-mark{ width: 28px; height: 28px; border-radius: 7px; display:block; flex: 0 0 auto; }
 .brand-name{
   font-family:'Fraunces', serif; font-style: italic; font-weight:600;
   font-size: 22px; letter-spacing:-0.01em;
@@ -476,37 +476,78 @@ body.no-scroll{ overflow:hidden; }
 
 /* ================= RESPONSIVE ================= */
 @media (max-width: 760px){
-  /* Phone list (tap a row for details), rows run edge to edge of the card:
-       1  (S) Subho .................................. −₹899
-       ☐  Dinner with friends at ABC ................... UPI   */
+  /* Phone list, edge to edge of the card. A thin bar on the left edge marks
+     spent (red) / received (green); ticked rows turn gold:
+       ┃ ☐  (S)  #1 Subho                    −₹899
+       ┃          Dinner with friends at ABC,  EXC 2
+       ┃          then dessert on the way…            */
   .table-wrap{ overflow: visible; padding:0; margin: 0 calc(-1 * var(--edge, 28px)); }
   .entry-table thead{ display:none; }
   .entry-table, .entry-table tbody{ display:block; width:100%; }
   .entry-table tbody tr{
-    padding: 14px var(--edge, 28px); border-bottom: 1px solid var(--line);
-    display:grid; align-items:center; gap: 10px 10px;
+    --bar: var(--brick); --card: #FBF8EF;
+    padding: 12px var(--edge, 28px) 12px calc(var(--edge, 28px) - 2px);
+    display:grid; align-items:center; gap: 6px 10px;
+    position: relative;
     grid-template-columns: auto auto minmax(0, 1fr) auto;
     grid-template-areas:
-      "sl      avatar  name    amount"
-      "check   purpose purpose via";
+      "check  avatar  name     amount"
+      "check  avatar  purpose  split";
+    margin-bottom: 8px;   /* tiles float on the card, with a gap of card colour between them */
+    background: linear-gradient(to right, var(--bar) 3px, transparent 3px), var(--card);
   }
-  .entry-table tbody tr:last-child{ border-bottom: none; }
+  .entry-table tbody tr.row-plus{ --bar: var(--sage); }
+  .entry-table tbody tr.picked{ --bar: var(--gold); --card: #FCF1D6; }
+  .entry-table tbody tr:last-child{ margin-bottom: 0; }
   .entry-table tbody tr.row-minus, .entry-table tbody tr.row-plus{ box-shadow: none; }
+  .entry-table tbody tr:active{ --card: #F1EBDA; }
   .entry-table td{ border:none; padding: 0; width:auto; min-width: 0; }
   /* the desktop columns are swapped for the phone-only (.c-m) cells */
   .entry-table td.c-date, .entry-table td.c-via, .entry-table td.c-by, .entry-table td.c-loc,
   .entry-table td.c-note, .entry-table td.c-split, .entry-table td.c-purpose{ display:none; }
   .entry-table td.c-m{ display:block; }
-  .entry-table td.c-check{ grid-area: check; width: auto; }
-  .entry-table td.m-avatar{ grid-area: avatar; display:flex; }
-  .entry-table td.m-avatar .p-avatar{ width: 28px; height: 28px; font-size: 12px; }
-  .entry-table td.m-name{ grid-area: name; font-weight: 600; font-size: 14px; }
-  .entry-table td.c-amount{ grid-area: amount; text-align:right; font-size: 15px; }
-  .entry-table td.m-purpose{ grid-area: purpose; font-size: 13.5px; color: var(--ink); }
-  .entry-table td.m-via{ grid-area: via; text-align:right; font-size: 12.5px; color: var(--ink-soft); max-width: 90px; }
-  .entry-table td.m-name, .entry-table td.m-purpose, .entry-table td.m-via{
+  /* tick box lines up with the middle of the photo */
+  .entry-table td.c-check{ grid-area: check; width: auto; display:flex; align-self: start; padding-top: 8.5px; }
+  .entry-table td.c-check .sl-no{ display:none; }
+  .entry-table .ent-check input{
+    appearance: none; -webkit-appearance: none; width: 19px; height: 19px; border-radius: 5px;
+    border: 1.5px solid rgba(27,36,32,0.32); background: var(--card) center / 12px no-repeat;
+    transition: background-color .12s ease, border-color .12s ease;
+  }
+  .entry-table .ent-check input:checked{
+    border-color: var(--ink); background-color: var(--ink);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 8.5l3.2 3L13 4.5' fill='none' stroke='%23E8A93B' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  .entry-table td.m-avatar{ grid-area: avatar; display:flex; align-self: start; padding-top: 1px; }
+  #view-split .entry-table td.m-avatar .p-avatar{
+    width: 34px; height: 34px; font-size: 14px;
+    box-shadow: 0 0 0 2px var(--card), 0 0 0 3px hsl(var(--hue, 160) 32% 42% / .4);
+  }
+  /* Sl No. tucked into the top-left corner */
+  .entry-table td.m-sl{
+    position: absolute; top: 3px; left: calc(var(--edge, 28px) - 2px);
+    font-family:'IBM Plex Mono',monospace; font-size: 8.5px; line-height: 1; color: var(--ink-soft); opacity: .6;
+  }
+  .entry-table td.m-sl::before{ content: "#"; }
+  .entry-table td.m-name{
+    grid-area: name; font-weight: 650; font-size: 13.5px; color: var(--ink);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
+  #view-split .entry-table td.c-amount{ grid-area: amount; text-align:right; font-size: 14.5px; }
+  .entry-table td.c-amount .amt{ letter-spacing: -.02em; }
+  /* up to two lines of purpose; the details popup shows all of it */
+  .entry-table td.m-purpose{
+    grid-area: purpose; align-self: start; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+    overflow: hidden; overflow-wrap: anywhere;
+  }
+  /* who shares it, under the amount: ALL · EXC 2 · INC 2 */
+  .entry-table td.m-split{
+    grid-area: split; align-self: end; justify-self: end;
+    font-family:'IBM Plex Mono',monospace; font-size: 8.5px; font-weight: 400; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--brick); padding: 1px 5px; border-radius: 4px; background: var(--brick-bg); white-space: nowrap;
+  }
+  .entry-table td.m-split.all{ color: var(--sage); background: var(--sage-bg); }
   .entry-table .sub{ display:none; }
 }
 @media (max-width: 600px){ .table-wrap{ --edge: 16px; } }
@@ -525,7 +566,7 @@ body.no-scroll{ overflow:hidden; }
   /* Header: same height, smaller contents */
   .topbar-inner{ padding: 0 14px; min-height: 56px; gap: 8px; }
   .brand{ gap: 7px; }
-  .brand-mark{ font-size: 19px; }
+  .brand-mark{ width: 24px; height: 24px; border-radius: 6px; }
   .brand-name{ font-size: 17px; }
   .topbar-actions{ gap: 6px; }
   .topbar .btn-small{ min-height: 30px; padding: 5px 11px; font-size: 12px; border-radius: 7px; }
@@ -555,6 +596,12 @@ body.no-scroll{ overflow:hidden; }
   .sheet-backdrop{ align-items: flex-end; padding: 0; }
   .sheet{ max-width:none; border-radius: 18px 18px 0 0; max-height: 92vh; animation: slideUp .2s ease; }
   @keyframes slideUp{ from{ transform: translateY(40px); opacity:.6; } to{ transform:none; opacity:1; } }
+  /* grab handle: pull the sheet down to close it */
+  .sheet::before{
+    content: ""; flex: 0 0 auto; align-self: center;
+    width: 40px; height: 4px; margin-top: 8px; border-radius: 2px; background: rgba(27,36,32,0.2);
+  }
+  .sheet .sheet-head{ padding-top: 8px; }
 }
 
 /* ---------- Cloud / auth ---------- */
@@ -641,7 +688,8 @@ body.no-scroll{ overflow:hidden; }
 .rp-host{ position: fixed; left: -10000px; top: 0; }
 .rp{ width: 760px; padding: 36px 40px 28px; background:#fff; color:#1B2420; font-family:'Inter',sans-serif; font-size: 13px; }
 .rp-top{ display:flex; justify-content:space-between; color:#5B6459; font-size: 11.5px; border-bottom: 2px solid #E8A93B; padding-bottom: 10px; margin-bottom: 22px; }
-.rp-brand{ font-family:'Fraunces',serif; font-style: italic; font-weight: 600; font-size: 16px; color:#1B2420; }
+.rp-brand{ display:inline-flex; align-items:center; gap: 7px; font-family:'Fraunces',serif; font-style: italic; font-weight: 600; font-size: 16px; color:#1B2420; }
+.rp-brand img{ width: 22px; height: 22px; border-radius: 5px; }
 .rp-type{ font-family:'IBM Plex Mono',monospace; font-size: 10.5px; letter-spacing:.18em; text-transform:uppercase; color:#4C7A6B; }
 .rp h1{ font-family:'Fraunces',serif; font-weight:600; font-size: 30px; margin: 4px 0 6px; }
 .rp-meta{ color:#5B6459; font-size: 12px; margin-bottom: 18px; }
@@ -665,10 +713,8 @@ body.no-scroll{ overflow:hidden; }
 
 /* ---------- Import ---------- */
 .entries-actions{ display:flex; gap: 8px; }
-.import-format{ background: var(--paper-dim); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
-.import-format code, .hint code{ font-family:'IBM Plex Mono',monospace; font-size: 11.5px; background: rgba(27,36,32,0.06); padding: 1px 4px; border-radius: 4px; }
-.import-format > code{ display:block; padding: 6px 8px; overflow-x:auto; white-space: nowrap; }
-#importText{ font-family:'IBM Plex Mono',monospace; font-size: 12.5px; resize: vertical; min-height: 110px; }
+.hint code{ font-family:'IBM Plex Mono',monospace; font-size: 11.5px; background: rgba(27,36,32,0.06); padding: 1px 4px; border-radius: 4px; }
+#importText{ font-family:'IBM Plex Mono',monospace; font-size: 12.5px; resize: vertical; min-height: 240px; margin-top: 10px; }
 .import-tools{ display:flex; align-items:center; justify-content:space-between; gap: 10px; margin: 10px 0 4px; flex-wrap: wrap; }
 .file-btn{ display:inline-flex; align-items:center; cursor:pointer; }
 .import-summary{ display:flex; flex-wrap: wrap; align-items:center; gap: 6px 14px; margin: 12px 0 8px; font-size: 13px; font-weight: 600; }
@@ -817,7 +863,7 @@ body.no-scroll{ overflow:hidden; }
 @media (max-width: 600px){
   /* header */
   .brand-name{ font-size: 18.5px; }
-  .brand-mark{ font-size: 21px; }
+  .brand-mark{ width: 26px; height: 26px; }
   .topbar .btn-small{ font-size: 13px; min-height: 32px; padding: 5px 12px; }
   .top-back{ width: 36px; height: 36px; }
   .top-back svg{ width: 21px; height: 21px; }
@@ -1001,7 +1047,7 @@ body.no-scroll{ overflow:hidden; }
 }
 .entry-filter-note{ font-size: 12.5px; color: var(--ink-soft); margin: -2px 0 8px; }
 
-/* Sl No. | Name | ............ | Amount — tap to sort (ascending) */
+/* Sl No. | Name | ..... Time ..... | Amount — tap to sort, tap again to flip ▲ / ▼ */
 .entry-sortbar{
   display:grid; grid-template-columns: auto auto 1fr auto; gap: 0 14px; align-items:center;
   padding: 6px 12px; margin-bottom: 4px; border-radius: 9px; background: var(--paper-dim);
@@ -1013,14 +1059,12 @@ body.no-scroll{ overflow:hidden; }
 .th-sort{ text-transform: inherit; letter-spacing: inherit; font-size: inherit; }
 .entry-sortbar button.on, .th-sort.on{ color: var(--ink); }
 .entry-sortbar button.on::after, .th-sort.on::after{ content: " ▲"; font-size: 9px; color: var(--sage); }
+.entry-sortbar button.on.desc::after, .th-sort.on.desc::after{ content: " ▼"; }
+.entry-sortbar .sort-mid{ justify-self: center; }
 @media (min-width: 761px){ .entry-sortbar{ display:none; } }   /* desktop sorts from the table headers */
 
-/* Sl No. above the checkbox (desktop: in the same cell; phones: its own grid cell) */
+/* Sl No. above the checkbox (desktop; phones show it before the name) */
 .sl-no{ display:block; margin-bottom: 3px; text-align:center; font-size: 11px; color: var(--ink-soft); }
-@media (max-width: 760px){
-  .entry-table td.c-check .sl-no{ display:none; }
-  .entry-table td.m-sl{ grid-area: sl; text-align:center; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); }
-}
 
 /* Filter popup */
 .filter-label{ font-weight: 700; font-size: 14px; margin: 16px 0 8px; }
@@ -1067,3 +1111,73 @@ body.no-scroll{ overflow:hidden; }
 .entries-total:empty{ display: none; }
 .entries-total b{ color: var(--ink); font-weight: 600; }
 .entries-total .muted{ font-size: 11.5px; }
+
+/* ---------- Add / edit entry form ---------- */
+#entryForm .ef{ display:flex; flex-direction:column; gap: 18px; }
+#entryForm label.field-label{
+  font-family:'Inter',sans-serif; text-transform:none; letter-spacing:0;
+  font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 8px;
+}
+#entryForm label.field-label .opt{ font-size: 12px; font-weight: 500; }
+#entryForm input[type=text], #entryForm input[type=number], #entryForm input[type=date], #entryForm input[type=time]{
+  width:100%; min-height: 50px; padding: 12px 14px; border-radius: 12px;
+  font-family:'Inter',sans-serif; font-size: 16px; color: var(--ink);
+  background: #fff; border: 1.5px solid var(--line); outline: none;
+  -webkit-appearance: none; appearance: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+#entryForm input:focus{ border-color: var(--sage); box-shadow: 0 0 0 3px rgba(76,122,107,0.15); }
+
+/* big amount bar: ₹ [ − | 0          ] */
+.ef-amount{ display:flex; align-items:center; gap: 10px; }
+.ef-cur{ font-family:'IBM Plex Mono',monospace; font-size: 30px; font-weight: 600; color: var(--ink-soft); }
+#entryForm .ef-amount .amount-field{
+  flex: 1; min-width: 0; gap: 0; overflow: hidden;
+  border: 1.5px solid var(--line); border-radius: 14px; background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+#entryForm .ef-amount .amount-field:focus-within{ border-color: var(--sage); box-shadow: 0 0 0 3px rgba(76,122,107,0.15); }
+#entryForm .ef-amount .sign-toggle{ width: 68px; flex: 0 0 68px; border: none; border-radius: 0; font-size: 30px; }
+#entryForm .ef-amount input[type=number]{
+  border: none; border-radius: 0; box-shadow: none; min-height: 68px; background: transparent;
+  font-family:'IBM Plex Mono',monospace; font-size: 30px; font-weight: 700; padding: 10px 16px;
+}
+#entryForm .ef-amount .amount-field.minus input{ color: var(--brick); }
+#entryForm .ef-amount .amount-field.plus input{ color: var(--sage); }
+#entryForm .ef-amount input::placeholder{ color: rgba(27,36,32,0.3); }
+.ef-sign-hint{ margin-top: -12px; }
+
+.ef-two{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* purpose with a leading icon */
+.ef-icon-input{ position: relative; }
+.ef-icon{ position:absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 18px; pointer-events:none; }
+#entryForm .ef-icon-input input{ padding-left: 44px; }
+
+/* Pay via / Paid by: tap a chip */
+.ef-chips{ display:flex; flex-wrap:wrap; gap: 8px; }
+.ef-chip{
+  display:inline-flex; align-items:center; gap: 7px; min-height: 40px; padding: 8px 16px;
+  border-radius: 22px; border: 1.5px solid var(--line); background: #fff; color: var(--ink);
+  font-family:'Inter',sans-serif; font-size: 14.5px; font-weight: 500; cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.ef-chip:has(.p-avatar){ padding-left: 5px; }
+#entryForm .ef-chip .p-avatar{ width: 28px; height: 28px; font-size: 12px; }
+.ef-chip.on{ border-color: var(--sage); background: var(--sage-bg); color: var(--sage); font-weight: 700; }
+/* ＋ Add at the end of Pay via: dashed, so it reads as an action, not a method */
+.ef-chip.ef-chip-add{ border: 1.5px dashed var(--gold); background: rgba(232,169,59,0.10); color: #9A6A12; font-weight: 600; }
+.ef-chip.ef-chip-add:hover{ background: rgba(232,169,59,0.18); }
+
+/* Payment methods popup (sits above the entry form) */
+#payModesSheet{ z-index: 55; }
+@media (min-width: 601px){ .pm-sheet{ max-width: 440px; } }
+.pm-list{ display:flex; flex-direction:column; gap: 8px; }
+.pm-row{ display:flex; align-items:center; gap: 8px; }
+.pm-row input[type=text]{ flex: 1; min-width: 0; }
+.pm-del{
+  flex: 0 0 auto; width: 44px; height: 44px; min-height: 0; padding: 0; border-radius: 9px; cursor: pointer;
+  border: 1.5px solid rgba(181,74,61,0.35); background: var(--brick-bg); font-size: 16px;
+}
+.pm-add{ display:flex; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.pm-add input[type=text]{ flex: 1; min-width: 0; }

@@ -1,4 +1,4 @@
-const CACHE_NAME = "spliteasy-v52";
+const CACHE_NAME = "spliteasy-v55";
 
 const urlsToCache = [
     "./",
@@ -13,6 +13,9 @@ const urlsToCache = [
     "./manifest.json",
     "./privacy.html",
     "./terms.html",
+    "./icons/icon.svg",
+    "./icons/favicon.ico",
+    "./icons/apple-touch-icon.png",
     "./icons/icon-192.png",
     "./icons/icon-512.png"
 ];

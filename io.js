@@ -32,6 +32,7 @@ document.querySelector('#exportSheet .export-options').addEventListener('click',
   label.textContent = 'Preparing…';
   try{
     if(kind === 'pdf') await exportPdf(cur());
+    else if(kind === 'txt') await exportText(cur());
     else await exportImage(cur());
     closeSheet('exportSheet');
   } catch(err){
@@ -84,7 +85,7 @@ function reportHtml(s){
     : `<div class="rp-empty rp-break">${entries.length ? 'Everyone is even — no payments needed.' : 'Nothing to settle yet.'}</div>`;
 
   return `<div class="rp">
-    <div class="rp-top"><span class="rp-brand">💸 SplitEasy</span><span>Exported ${formatStamp(Date.now())}</span></div>
+    <div class="rp-top"><span class="rp-brand"><img src="icons/icon.svg" alt="">SplitEasy</span><span>Exported ${formatStamp(Date.now())}</span></div>
     <h1>${escapeHtml(s.name)}</h1>
     <div class="rp-meta">${meta}</div>
     <div class="rp-stats rp-break">
@@ -103,6 +104,57 @@ function reportHtml(s){
     ${settle}
     <div class="rp-foot rp-break">Made with SplitEasy · subhodippal.github.io/billSplit</div>
   </div>`;
+}
+
+// The same report as plain text — easy to paste into WhatsApp, email or notes.
+function reportText(s){
+  const money = n => `${s.currency}${formatNum(n)}`;
+  const entries = sortedEntries(s);
+  const spent = entries.filter(e => e.sign < 0).reduce((t, e) => t + e.amount, 0);
+  const recv = entries.filter(e => e.sign > 0).reduce((t, e) => t + e.amount, 0);
+  const { people, share, balance, transactions } = computeBalances(s);
+  const paidOut = p => entries.filter(e => e.paidBy === p && e.sign < 0).reduce((t, e) => t + e.amount, 0);
+  const rule = '─'.repeat(28);
+
+  const lines = [
+    s.name,
+    [s.location && `📍 ${s.location}`, `${s.members.length} people`].filter(Boolean).join(' · '),
+    `Exported ${formatStamp(Date.now())}`,
+    '',
+    `Total spent: ${money(spent)}`,
+    ...(recv ? [`Received: ${money(recv)} · Net cost: ${money(spent - recv)}`] : []),
+    `Entries: ${entries.length} · People: ${people.length}`,
+    '', rule, 'ENTRIES', rule
+  ];
+  if(!entries.length) lines.push('No entries yet.');
+  entries.forEach((e, i) => {
+    const [d, t] = formatDateTime(e.datetime);
+    const excluded = s.members.filter(m => !e.splitAmong.includes(m));
+    const split = excluded.length === 0 ? 'everyone'
+      : excluded.length < e.splitAmong.length ? `everyone except ${excluded.join(', ')}` : e.splitAmong.join(', ');
+    lines.push(`${i + 1}. ${e.purpose}  ${e.sign < 0 ? '−' : '+'}${money(e.amount)}`);
+    lines.push(`   ${d}${t ? `, ${t}` : ''} · ${e.sign < 0 ? 'paid' : 'received'} by ${e.paidBy}${e.payVia ? ` (${e.payVia})` : ''}`);
+    lines.push(`   Split with ${split}`);
+    if(e.note) lines.push(`   Note: ${e.note}`);
+  });
+
+  lines.push('', rule, 'BALANCES', rule);
+  people.forEach(p => {
+    const b = balance[p];
+    const state = b > 0.005 ? `gets back ${money(b)}` : b < -0.005 ? `owes ${money(-b)}` : 'settled';
+    lines.push(`${p}: paid ${money(paidOut(p))} · share ${money(share[p])} · ${state}`);
+  });
+
+  lines.push('', rule, 'SETTLE UP', rule);
+  if(transactions.length) transactions.forEach(t => lines.push(`${t.from} → ${t.to}: ${money(t.amount)}`));
+  else lines.push(entries.length ? 'Everyone is even — no payments needed.' : 'Nothing to settle yet.');
+
+  lines.push('', 'Made with SplitEasy · subhodippal.github.io/billSplit');
+  return lines.join('\n');
+}
+
+async function exportText(s){
+  await saveFile(new Blob([reportText(s)], { type: 'text/plain;charset=utf-8' }), `${slug(s.name)}.txt`);
 }
 
 // Draw the report off-screen; also return where rows start so PDF pages break between rows.
@@ -196,6 +248,8 @@ const ORDER_WITH_DATE = ['date', 'purpose', 'amount', 'paidBy', 'split', 'payVia
 const ORDER_NO_DATE = ['purpose', 'amount', 'paidBy', 'split', 'payVia', 'note'];
 // The simple everyday format: "2000, Hotel, Subhodip, UPI" (split with everyone).
 const ORDER_AMOUNT_FIRST = ['amount', 'purpose', 'paidBy', 'payVia', 'note'];
+// …optionally with a time in front: "12:30pm, 2000, Hotel, Subhodip, UPI".
+const ORDER_TIME_FIRST = ['time', 'amount', 'purpose', 'paidBy', 'payVia', 'note'];
 let importRows = [];
 let importTimer;
 
@@ -315,8 +369,10 @@ function previewImport(rows){
     if(!map && filled.length === 1 && parseImportDate(filled[0])){ groupDate = filled[0]; continue; }
     let m = map;
     if(!m){
-      const amountFirst = parseAmount(cells[0]) !== null && !parseImportDate(cells[0]);
-      const order = amountFirst ? ORDER_AMOUNT_FIRST : parseImportDate(cells[0]) ? ORDER_WITH_DATE : ORDER_NO_DATE;
+      const timeFirst = parseImportTime(cells[0]) !== null;
+      const amountFirst = !timeFirst && parseAmount(cells[0]) !== null && !parseImportDate(cells[0]);
+      const order = timeFirst ? ORDER_TIME_FIRST : amountFirst ? ORDER_AMOUNT_FIRST
+        : parseImportDate(cells[0]) ? ORDER_WITH_DATE : ORDER_NO_DATE;
       m = {};
       order.forEach((f, i) => { m[f] = i; });
     }
@@ -374,6 +430,22 @@ function parseImportDate(v){
   }
 }
 
+// "12:30pm", "2:10 pm", "9am", "14:30" -> "HH:MM" (24h). Needs a colon or am/pm, so "12.50" stays an amount.
+function parseImportTime(v){
+  const str = String(v ?? '').trim();
+  const m = str.match(/^(\d{1,2}):(\d{2})\s*(am|pm)?$/i) || str.match(/^(\d{1,2})(?:[.:](\d{2}))?\s*(am|pm)$/i);
+  if(!m) return null;
+  let h = +m[1];
+  const mi = m[2] === undefined ? 0 : +m[2];
+  if(m[3]){
+    if(h < 1 || h > 12) return null;
+    if(/pm/i.test(m[3]) && h < 12) h += 12;
+    if(/am/i.test(m[3]) && h === 12) h = 0;
+  }
+  if(h > 23 || mi > 59) return null;
+  return `${String(h).padStart(2, '0')}:${String(mi).padStart(2, '0')}`;
+}
+
 function matchName(s, raw){
   const name = cleanName(raw);
   if(!name) return '';
@@ -399,6 +471,11 @@ function toEntryDraft(s, get){
   if(cellToText(rawDate)){
     const parsed = parseImportDate(rawDate);
     if(parsed) datetime = parsed; else errors.push(`can’t read date “${cellToText(rawDate)}”`);
+  }
+  const rawTime = cellToText(get('time'));
+  if(rawTime){
+    const time = parseImportTime(rawTime);
+    if(time) datetime = datetime.slice(0, 11) + time; else errors.push(`can’t read time “${rawTime}”`);
   }
   const paidBy = matchName(s, cellToText(get('paidBy'))) || me();
   const rawSplit = cellToText(get('split'));

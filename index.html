@@ -13,9 +13,9 @@
 <meta property="og:site_name" content="SplitEasy">
 <title>SplitEasy | Split Trip Expenses Easily</title>
 
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="shortcut icon" href="icons/favicon.ico">
-<link rel="apple-touch-icon" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+<link rel="icon" sizes="32x32" href="icons/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -49,7 +49,7 @@ if ("serviceWorker" in navigator) {
   <div class="topbar-inner">
     <a href="#/" class="top-back" id="topBack" aria-label="Back" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></a>
     <a href="#/" class="brand" aria-label="SplitEasy home">
-      <span class="brand-mark">💸</span>
+      <img class="brand-mark" src="icons/icon.svg" alt="" width="28" height="28">
       <span class="brand-name">SplitEasy</span>
     </a>
     <div class="topbar-actions">
@@ -188,7 +188,7 @@ if ("serviceWorker" in navigator) {
         <div class="entry-sortbar" id="entrySortBar" hidden>
           <button type="button" data-sort="sl">Sl No.</button>
           <button type="button" data-sort="name">Name</button>
-          <span></span>
+          <button type="button" class="sort-mid" data-sort="time">Time</button>
           <button type="button" data-sort="amount">Amount</button>
         </div>
         <div class="entry-filter-note" id="entryFilterNote" hidden></div>
@@ -200,7 +200,7 @@ if ("serviceWorker" in navigator) {
             <thead>
               <tr>
                 <th class="c-check"><button type="button" class="th-sort" data-sort="sl">#</button></th>
-                <th>Date &amp; time</th>
+                <th><button type="button" class="th-sort" data-sort="time">Date &amp; time</button></th>
                 <th class="num"><button type="button" class="th-sort" data-sort="amount">Amount</button></th>
                 <th>Purpose</th>
                 <th>Pay via</th>
@@ -302,6 +302,28 @@ if ("serviceWorker" in navigator) {
   </div>
 </div>
 
+<!-- Payment methods: add / rename / remove (opened from the ＋ Add chip in the entry form) -->
+<div class="sheet-backdrop" id="payModesSheet" hidden>
+  <div class="sheet pm-sheet">
+    <div class="sheet-head">
+      <h3>Payment methods</h3>
+      <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="hint" style="margin:0 0 12px;">Tap a name to rename it. Entries already saved keep the method they were added with.</div>
+      <div class="pm-list" id="pmList"></div>
+      <form class="pm-add" id="pmAddForm" autocomplete="off">
+        <input type="text" id="pmNew" placeholder="New method, e.g. GPay, Credit card" maxlength="40" aria-label="New payment method">
+        <button type="submit" class="btn-primary">Add</button>
+      </form>
+    </div>
+    <div class="sheet-foot">
+      <span style="flex:1"></span>
+      <button type="button" class="btn-primary" data-close-sheet>Done</button>
+    </div>
+  </div>
+</div>
+
 <div class="sheet-backdrop" id="entrySheet" hidden>
   <form class="sheet" id="entryForm" autocomplete="off">
     <div class="sheet-head">
@@ -309,35 +331,47 @@ if ("serviceWorker" in navigator) {
       <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="form-grid">
-        <div>
-          <label class="field-label req" for="eDate">Date &amp; time</label>
-          <input type="datetime-local" id="eDate" required>
-        </div>
-        <div>
-          <label class="field-label req" for="eAmount">Amount</label>
+      <div class="ef">
+        <!-- Big amount bar: currency · tap − / + · amount -->
+        <div class="ef-amount">
+          <span class="ef-cur" id="eCur">₹</span>
           <div class="amount-field">
             <button type="button" class="sign-toggle minus" id="eSign" title="Tap to switch between paid out (−) and received (+)">−</button>
-            <input type="number" id="eAmount" placeholder="0" min="0" step="0.01" inputmode="decimal" required>
+            <input type="number" id="eAmount" placeholder="0" min="0" step="0.01" inputmode="decimal" required aria-label="Amount">
           </div>
-          <div class="hint" id="eSignHint">− for expenses, + for money received / refunds</div>
         </div>
-        <div class="span-2">
+        <div class="hint ef-sign-hint" id="eSignHint">− for spend · + for received</div>
+        <div class="ef-two">
+          <div>
+            <label class="field-label req" for="eDay">Date</label>
+            <input type="date" id="eDay" required>
+          </div>
+          <div>
+            <label class="field-label req" for="eTime">Time</label>
+            <input type="time" id="eTime" required>
+          </div>
+        </div>
+        <div>
           <label class="field-label req" for="ePurpose">Purpose</label>
-          <input type="text" id="ePurpose" placeholder="e.g. Dinner, Train tickets, Hotel" required maxlength="80" list="purposeList">
+          <div class="ef-icon-input">
+            <span class="ef-icon" aria-hidden="true">🧾</span>
+            <input type="text" id="ePurpose" placeholder="What was it for? e.g. Dinner, Train tickets" required maxlength="80" list="purposeList">
+          </div>
           <datalist id="purposeList"></datalist>
         </div>
         <div>
-          <label class="field-label" for="ePayVia">Pay via <span class="opt">optional</span></label>
-          <select id="ePayVia"></select>
+          <label class="field-label">Pay via <span class="opt">optional</span></label>
+          <input type="hidden" id="ePayVia">
+          <div class="ef-chips" id="ePayViaChips"></div>
         </div>
         <div>
-          <label class="field-label req" for="ePaidBy">Paid by</label>
-          <select id="ePaidBy"></select>
+          <label class="field-label req">Paid by</label>
+          <input type="hidden" id="ePaidBy">
+          <div class="ef-chips" id="ePaidByChips"></div>
         </div>
-        <div class="span-2">
+        <div>
           <label class="field-label" for="eNote">Note <span class="opt">optional</span></label>
-          <input type="text" id="eNote" placeholder="Anything…" maxlength="200">
+          <input type="text" id="eNote" placeholder="Any extra details…" maxlength="200">
         </div>
         <div class="span-2">
           <div class="split-label-row">
@@ -444,6 +478,10 @@ if ("serviceWorker" in navigator) {
           <span class="export-ico">🖼️</span>
           <span><strong>Image</strong><small>One PNG picture — handy for WhatsApp</small></span>
         </button>
+        <button type="button" class="export-opt" data-export="txt">
+          <span class="export-ico">📝</span>
+          <span><strong>Plain text</strong><small>A .txt file — paste anywhere, opens on any device</small></span>
+        </button>
       </div>
     </div>
   </div>
@@ -457,18 +495,12 @@ if ("serviceWorker" in navigator) {
       <button type="button" class="btn-icon" data-close-sheet aria-label="Close">✕</button>
     </div>
     <div class="sheet-body">
-      <p class="hint" style="margin-top:0;">Paste rows copied from Excel / Google Sheets, type one entry per line, or upload a file.</p>
-      <div class="import-format">
-        <div class="field-label" style="margin:0 0 4px;">Write a date, then one expense per line</div>
-        <pre class="import-example">06/10/2026
-2000, Hotel, Subhodip, UPI
-1000, Lunch, Akshay, Cash
-
-07/10/2026
-1500, Train tickets, Subhodip, UPI</pre>
-        <div class="hint"><strong>amount, purpose, paid by, pay via</strong> — split with everyone. First names are enough. Pay via is optional; write <code>+500</code> for money received. Excel / CSV files with a header row work too.</div>
-      </div>
-      <textarea id="importText" rows="6" spellcheck="false" placeholder="06/10/2026&#10;2000, Hotel, Subhodip, UPI&#10;1000, Lunch, Akshay, Cash"></textarea>
+      <p class="hint" style="margin-top:0;">Paste large entries in this format:</p>
+      <pre class="import-example">DD/MM/YYYY
+time, amount, purpose, paid by, pay via
+time, amount, purpose, paid by, pay via</pre>
+      <p class="hint" style="margin:6px 0 0;">Only <strong>amount</strong> and <strong>purpose</strong> are required.</p>
+      <textarea id="importText" rows="12" spellcheck="false" placeholder="06/10/2026&#10;12:30pm, 2000, Hotel, Subho, UPI&#10;2:10pm, 1000, Lunch, suman, Cash&#10;&#10;07/10/2026&#10;1540, shopping, subho&#10;1800, trin tickets, Keka"></textarea>
       <div class="import-tools">
         <label class="btn-ghost btn-small file-btn">📄 Choose Excel / CSV file<input type="file" id="importFile" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden></label>
         <button type="button" class="btn-link-text" id="importTemplateBtn">Download template</button>
